@@ -7,7 +7,7 @@ Position = tuple[int, int]
 
 
 # (row, col) coordinate system
-class Dir(Enum):
+class Direction(Enum):
     # direction deltas (dr, dc)
     NORTH = (-1, 0)
     EAST = (0, 1)
@@ -37,21 +37,21 @@ class Move(Enum):
 
 
 class Maze:
-    def __init__(self, rows, cols) -> None:
-        self._rows = rows
-        self._cols = cols
-        self._goal = (rows // 2, cols // 2)  # assume odd maze size for simplicity
-        self._h_walls = [[False] * cols for _ in range(rows + 1)]
-        self._v_walls = [[False] * (cols + 1) for _ in range(rows)]
-        self._dists = [[-1] * cols for _ in range(rows)]
-
-    @property
-    def height(self) -> int:
-        return self._rows
+    def __init__(self, width, height) -> None:
+        self._height = height
+        self._width = width
+        self._goal = (height // 2, width // 2)  # assume odd maze size for simplicity
+        self._h_walls = [[False] * width for _ in range(height + 1)]
+        self._v_walls = [[False] * (width + 1) for _ in range(height)]
+        self._dists = [[-1] * width for _ in range(height)]
 
     @property
     def width(self) -> int:
-        return self._cols
+        return self._width
+
+    @property
+    def height(self) -> int:
+        return self._height
 
     @property
     def goal(self) -> Position:
@@ -65,43 +65,45 @@ class Maze:
     def dists(self) -> list[list[int]]:
         return self._dists
 
-    def get_wall(self, row, col, direction: Dir) -> tuple[list[list[bool]], int, int]:
+    def get_wall(
+        self, row, col, direction: Direction
+    ) -> tuple[list[list[bool]], int, int]:
         """Returns the matrix representing horizontal or vertical walls and the
         indexes corresponding to the wall at the specified position"""
-        if direction == Dir.NORTH:
+        if direction == Direction.NORTH:
             return self._h_walls, row, col
-        if direction == Dir.EAST:
+        if direction == Direction.EAST:
             return self._v_walls, row, col + 1
-        if direction == Dir.SOUTH:
+        if direction == Direction.SOUTH:
             return self._h_walls, row + 1, col
-        if direction == Dir.WEST:
+        if direction == Direction.WEST:
             return self._v_walls, row, col
 
     def add_wall(self, row, col, direction) -> None:
         walls, r, c = self.get_wall(row, col, direction)
         walls[r][c] = True
 
-    def is_wall(self, row, col, direction: Dir) -> bool:
+    def is_wall(self, row, col, direction: Direction) -> bool:
         walls, r, c = self.get_wall(row, col, direction)
         return walls[r][c]
 
-    def neighbours(self, row, col) -> list[tuple[int, int, Dir]]:
+    def neighbours(self, row, col) -> list[tuple[int, int, Direction]]:
         """Returns the accessible neighbouring cells from the specified position,
         i.e. cells that are within bounds and not blocked by a wall.
 
         Returns:
-            List of tuples where each tuple contains (row, col, dir)
+            List of tuples where each tuple contains (row, col, direction)
         """
         neighbours = []
-        for d in Dir:
+        for d in Direction:
             nr, nc = row + d.dr, col + d.dc
-            if 0 <= nr < self._rows and 0 <= nc < self._cols:  # within bounds
+            if 0 <= nr < self._height and 0 <= nc < self._width:  # within bounds
                 if not self.is_wall(row, col, d):  # not blocked by a wall
                     neighbours.append((nr, nc, d))
         return neighbours
 
     def floodfill(self) -> None:
-        self._dists = [[-1] * self._cols for _ in range(self._rows)]
+        self._dists = [[-1] * self._width for _ in range(self._height)]
         self._dists[self._goal[0]][self._goal[1]] = 0
         q = deque([self._goal])
         while q:
@@ -111,7 +113,7 @@ class Maze:
                     self._dists[nr][nc] = self._dists[row][col] + 1
                     q.append((nr, nc))
 
-    def next_dir(self, row, col, current_dir: Dir) -> Dir:
+    def next_direction(self, row, col, current_dir: Direction) -> Direction:
         """Updates the manhattan distances using floodfill, then returns the
         direction to move, based on the current position"""
         self.floodfill()
@@ -119,18 +121,18 @@ class Maze:
         min_dist = dists[row][col]
         next_dir = current_dir
         # find neighbouring cell with lowest distance from goal
-        for nr, nc, dir in self.neighbours(row, col):
+        for nr, nc, direction in self.neighbours(row, col):
             dist = dists[nr][nc]
             if dist < min_dist:
                 min_dist = dist
-                next_dir = dir
+                next_dir = direction
         return next_dir
 
-    def next_move(self, current_dir: Dir, next_dir: Dir) -> Move:
+    def next_move(self, current_dir: Direction, next_dir: Direction) -> Move:
         """Returns the required move to make based on the current direction and
         the next direction"""
-        # take advantage of the fact that the Dir enum is ordered clockwise
-        dirs = list(Dir)
+        # take advantage of the fact that the Direction enum is ordered clockwise
+        dirs = list(Direction)
         offset = (dirs.index(next_dir) - dirs.index(current_dir)) % len(dirs)
 
         if offset == 0:
@@ -150,16 +152,16 @@ def rc_to_xy(row, col, num_rows):
 
 
 def display_walls(maze: Maze, row, col):
-    for dir in Dir:
-        if maze.is_wall(row, col, dir):
+    for direction in Direction:
+        if maze.is_wall(row, col, direction):
             x, y = rc_to_xy(row, col, maze.height)
-            if dir == Dir.NORTH:
+            if direction == Direction.NORTH:
                 API.setWall(x, y, "n")
-            elif dir == Dir.EAST:
+            elif direction == Direction.EAST:
                 API.setWall(x, y, "e")
-            elif dir == Dir.SOUTH:
+            elif direction == Direction.SOUTH:
                 API.setWall(x, y, "s")
-            elif dir == Dir.WEST:
+            elif direction == Direction.WEST:
                 API.setWall(x, y, "w")
 
 
@@ -175,19 +177,19 @@ def log(string):
     sys.stderr.flush()
 
 
-def update_walls(maze: Maze, row, col, dir):
+def update_walls(maze: Maze, row, col, direction):
     if API.wallFront():
-        maze.add_wall(row, col, dir)
+        maze.add_wall(row, col, direction)
     if API.wallLeft():
-        maze.add_wall(row, col, dir.rotate(-1))
+        maze.add_wall(row, col, direction.rotate(-1))
     if API.wallRight():
-        maze.add_wall(row, col, dir.rotate(1))
+        maze.add_wall(row, col, direction.rotate(1))
 
 
-def move_mouse(maze, row, col, dir):
+def move_mouse(maze, row, col, direction):
     """Moves the mouse and returns the new position and direction of movement"""
-    next_dir = maze.next_dir(row, col, dir)
-    move = maze.next_move(dir, next_dir)
+    next_dir = maze.next_dir(row, col, direction)
+    move = maze.next_move(direction, next_dir)
     if move == Move.FORWARD:
         API.moveForward()
     elif move == Move.RIGHT:
@@ -213,9 +215,9 @@ def main():
     # starting position and direction
     start = (height - 1, 0)
     row, col = start
-    dir = Dir.NORTH
+    direction = Direction.NORTH
 
-    maze = Maze(height, width)
+    maze = Maze(width, height)
 
     while True:
         # mouse goes back and forth between start and centre
@@ -227,7 +229,7 @@ def main():
                 maze.goal = start
 
         # update walls and recalculate distances
-        update_walls(maze, row, col, dir)
+        update_walls(maze, row, col, direction)
         maze.floodfill()
 
         # display walls and distances for debugging
@@ -235,7 +237,7 @@ def main():
         display_dists(maze)
 
         # move the mouse
-        row, col, dir = move_mouse(maze, row, col, dir)
+        row, col, direction = move_mouse(maze, row, col, direction)
 
 
 if __name__ == "__main__":
