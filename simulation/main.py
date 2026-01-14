@@ -175,6 +175,34 @@ def log(string):
     sys.stderr.flush()
 
 
+def update_walls(maze: Maze, row, col, dir):
+    if API.wallFront():
+        maze.add_wall(row, col, dir)
+    if API.wallLeft():
+        maze.add_wall(row, col, dir.rotate(-1))
+    if API.wallRight():
+        maze.add_wall(row, col, dir.rotate(1))
+
+
+def move_mouse(maze, row, col, dir):
+    """Moves the mouse and returns the new position and direction of movement"""
+    next_dir = maze.next_dir(row, col, dir)
+    move = maze.next_move(dir, next_dir)
+    if move == Move.FORWARD:
+        API.moveForward()
+    elif move == Move.RIGHT:
+        API.turnRight()
+        API.moveForward()
+    elif move == Move.BACKWARD:
+        API.turnRight()
+        API.turnRight()
+        API.moveForward()
+    elif move == Move.LEFT:
+        API.turnLeft()
+        API.moveForward()
+    return row + next_dir.dr, col + next_dir.dc, next_dir
+
+
 def main():
     # the API uses (x, y) cartesian coordinates
     # the Maze class uses (r, c) graphics coordinates
@@ -198,15 +226,8 @@ def main():
                 log("Centre reached")
                 maze.goal = start
 
-        # update maze based on surrounding walls
-        if API.wallFront():
-            maze.add_wall(row, col, dir)
-        if API.wallLeft():
-            maze.add_wall(row, col, dir.rotate(-1))
-        if API.wallRight():
-            maze.add_wall(row, col, dir.rotate(1))
-
-        # update distances
+        # update walls and recalculate distances
+        update_walls(maze, row, col, dir)
         maze.floodfill()
 
         # display walls and distances for debugging
@@ -214,25 +235,7 @@ def main():
         display_dists(maze)
 
         # move the mouse
-        next_dir = maze.next_dir(row, col, dir)
-        move = maze.next_move(dir, next_dir)
-        if move == Move.FORWARD:
-            API.moveForward()
-        elif move == Move.RIGHT:
-            API.turnRight()
-            API.moveForward()
-        elif move == Move.BACKWARD:
-            API.turnRight()
-            API.turnRight()
-            API.moveForward()
-        elif move == Move.LEFT:
-            API.turnLeft()
-            API.moveForward()
-
-        # update position and direction
-        dir = next_dir
-        row += dir.dr
-        col += dir.dc
+        row, col, dir = move_mouse(maze, row, col, dir)
 
 
 if __name__ == "__main__":
