@@ -58,7 +58,7 @@ class Maze:
         walls, r, c = self.get_wall(row, col, direction)
         return walls[r][c]
 
-    def neighbours(self, row, col) -> list[tuple[int, int]]:
+    def neighbours(self, row, col) -> list[Position]:
         """Returns the accessible neighbouring cells from the specified position,
         i.e. cells that are within bounds and not blocked by a wall.
         """
@@ -80,6 +80,16 @@ class Maze:
                 if self._dists[nr][nc] == -1:  # check cell is blank
                     self._dists[nr][nc] = self._dists[row][col] + 1
                     q.append((nr, nc))
+
+    def next_move(self, row, col) -> Dir:
+        """Updates the manhattan distances using floodfill, then returns the
+        direction of the best next move, from the current position"""
+        self.floodfill()
+        dists = self.get_dists()
+        min = dists[row][col]
+        # find neighbouring cell with lowest distance from goal
+        for nr, nc in self.neighbours(row, col):
+            pass
 
 
 def display_dists(maze: Maze, rows: int):
