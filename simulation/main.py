@@ -27,6 +27,7 @@ class Move(Enum):
     FORWARD = 0
     LEFT = 1
     RIGHT = 2
+    IDLE = 3
 
 
 class Maze:
@@ -98,6 +99,54 @@ class Maze:
                     self._dists[nr][nc] = self._dists[row][col] + 1
                     q.append((nr, nc))
 
+    def next_move(self, row, col, current_dir):
+        """Updates the manhattan distances using floodfill, then returns the
+        best next move and direction, based on the current position and direction"""
+        self.floodfill()
+        dists = self.get_dists()
+        min_dist = dists[row][col]
+        next_dir = current_dir
+        # find neighbouring cell with lowest distance from goal
+        for nr, nc, dir in self.neighbours(row, col):
+            dist = dists[nr][nc]
+            if dist < min_dist:
+                min_dist = dist
+                next_dir = dir
+
+        # this is gross...
+        # need to figure out movement based on current direction
+        next_move = Move.IDLE
+        if current_dir == Dir.NORTH:
+            if next_dir == Dir.NORTH:
+                next_move = Move.FORWARD
+            elif next_dir == Dir.WEST:
+                next_move = Move.LEFT
+            elif next_dir == Dir.EAST:
+                next_move = Move.RIGHT
+        elif current_dir == Dir.EAST:
+            if next_dir == Dir.EAST:
+                next_move = Move.FORWARD
+            elif next_dir == Dir.NORTH:
+                next_move = Move.LEFT
+            elif next_dir == Dir.SOUTH:
+                next_move = Move.RIGHT
+        elif current_dir == Dir.SOUTH:
+            if next_dir == Dir.SOUTH:
+                next_move = Move.FORWARD
+            elif next_dir == Dir.EAST:
+                next_move = Move.LEFT
+            elif next_dir == Dir.WEST:
+                next_move = Move.RIGHT
+        elif current_dir == Dir.WEST:
+            if next_dir == Dir.WEST:
+                next_move = Move.FORWARD
+            elif next_dir == Dir.SOUTH:
+                next_move = Move.LEFT
+            elif next_dir == Dir.NORTH:
+                next_move = Move.RIGHT
+
+        return next_move, next_dir
+
 
 def display_dists(maze: Maze):
     dists = maze.get_dists()
@@ -147,6 +196,21 @@ def main():
         # update distances
         maze.floodfill()
         display_dists(maze)
+
+        # move (and update direction)
+        move, dir = maze.next_move(row, col, dir)
+        if move == Move.FORWARD:
+            API.moveForward()
+        elif move == Move.LEFT:
+            API.turnLeft()
+            API.moveForward()
+        elif move == Move.RIGHT:
+            API.turnRight()
+            API.moveForward()
+
+        # update position
+        row += dir.dr
+        col += dir.dc
 
     log(maze.next_move(row, col))
 
