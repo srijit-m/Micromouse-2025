@@ -3,8 +3,6 @@ import sys
 from collections import deque
 from enum import Enum
 
-Position = tuple[int, int]
-
 
 # (row, col) coordinate system
 class Direction(Enum):
@@ -33,7 +31,6 @@ class Move(Enum):
     RIGHT = 1
     BACKWARD = 2
     LEFT = 3
-    NONE = 4
 
 
 class Maze:
@@ -54,11 +51,11 @@ class Maze:
         return self._height
 
     @property
-    def goal(self) -> Position:
+    def goal(self) -> tuple[int, int]:
         return self._goal
 
     @goal.setter
-    def goal(self, pos: Position) -> None:
+    def goal(self, pos: tuple[int, int]) -> None:
         self._goal = pos
 
     @property
@@ -78,14 +75,18 @@ class Maze:
             return self._h_walls, row + 1, col
         if direction == Direction.WEST:
             return self._v_walls, row, col
+        return None
 
     def add_wall(self, row, col, direction) -> None:
-        walls, r, c = self.get_wall(row, col, direction)
-        walls[r][c] = True
+        if 0 <= row < self.height and 0 <= col < self.width:
+            walls, r, c = self.get_wall(row, col, direction)
+            walls[r][c] = True
 
     def is_wall(self, row, col, direction: Direction) -> bool:
-        walls, r, c = self.get_wall(row, col, direction)
-        return walls[r][c]
+        if 0 <= row < self.height and 0 <= col < self.width:
+            walls, r, c = self.get_wall(row, col, direction)
+            return walls[r][c]
+        return False
 
     def neighbours(self, row, col) -> list[tuple[int, int, Direction]]:
         """Returns the accessible neighbouring cells from the specified position,
@@ -114,24 +115,25 @@ class Maze:
                     q.append((nr, nc))
 
     def next_direction(self, row, col, current_dir: Direction) -> Direction:
-        """Updates the manhattan distances using floodfill, then returns the
-        direction to move, based on the current position"""
-        self.floodfill()
+        """Returns the direction to move, based on the current position.
+
+        Assumes that distances have been calculated already
+        """
         dists = self.dists
         min_dist = dists[row][col]
         next_dir = current_dir
         # find neighbouring cell with lowest distance from goal
         for nr, nc, direction in self.neighbours(row, col):
             dist = dists[nr][nc]
-            if dist < min_dist:
+            if dist != -1 and dist < min_dist:
                 min_dist = dist
                 next_dir = direction
         return next_dir
 
-    def next_move(self, current_dir: Direction, next_dir: Direction) -> Move:
+    def next_move(self, current_dir: Direction, next_dir: Direction) -> Move | None:
         """Returns the required move to make based on the current direction and
         the next direction"""
-        # take advantage of the fact that the Direction enum is ordered clockwise
+        # for simplicity, take advantage of the fact that the Direction enum is ordered clockwise
         dirs = list(Direction)
         offset = (dirs.index(next_dir) - dirs.index(current_dir)) % len(dirs)
 
@@ -143,7 +145,7 @@ class Maze:
             return Move.BACKWARD
         if offset == 3:
             return Move.LEFT
-        return Move.NONE
+        return None
 
 
 def rc_to_xy(row, col, num_rows):
@@ -169,7 +171,8 @@ def display_dists(maze: Maze):
     dists = maze.dists
     for row_idx, row in enumerate(dists):
         for col_idx, dist in enumerate(row):
-            API.setText(*rc_to_xy(row_idx, col_idx, maze.height), dist)
+            if dist != -1:
+                API.setText(*rc_to_xy(row_idx, col_idx, maze.height), dist)
 
 
 def log(string):
