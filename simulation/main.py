@@ -3,8 +3,8 @@ import sys
 from collections import deque
 from enum import Enum
 
-ROW_NUM = 9
-COLUMN_NUM = 9
+ROW_NUM = 5
+COLUMN_NUM = 5
 
 ROW_INDEX = 0
 COLUMN_INDEX = 1
@@ -151,17 +151,13 @@ class Maze:
                         dq.append((n_row, n_col))
 
                 
-        
-                
-
-
 
 def log(string):
     sys.stderr.write("{}\n".format(string))
     sys.stderr.flush()
 
 def main():
-    log("Running...")
+    log("Running... the sim")
     API.setColor(0, 0, "G")
     API.setText(0, 0, "abc")
 
@@ -171,15 +167,13 @@ def main():
     maze.initialise_floodfill_nums(maze.floodfill_distances, maze._row_num, maze._col_num)
     maze.calculate_floodfill_distances(maze._row_num, maze._col_num, maze.dq, maze.floodfill_distances, maze.hor_walls, maze.vert_walls)
     
+    
     for r in range(ROW_NUM):
         for c in range(COLUMN_NUM):
-            val = maze.floodfill_distances[r][c]
-            # Convert -1 (unvisited) to blank
-            if val == -1:
-                display_val = ""
-            else:
-                display_val = str(val)
-            API.setText(r, c, display_val)
+            sim_row = ROW_NUM - 1 - r  # flip row
+            sim_col = c                # column is the same
+            sim_val = maze.floodfill_distances[r][c]
+            API.setText(sim_row, sim_col, str(sim_val))
 
     #Wall follower algorithm    
     while True:
