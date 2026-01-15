@@ -2,9 +2,9 @@ import API
 import sys
 from collections import deque
 from enum import Enum
+from typing import Optional
 
 
-# (row, col) coordinate system
 class Direction(Enum):
     # direction deltas (dr, dc)
     NORTH = (-1, 0)
@@ -34,14 +34,23 @@ class Move(Enum):
 
 
 class Maze:
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        start_pos: Optional[tuple[int, int]] = None,
+        start_dir: Direction = Direction.NORTH,
+    ) -> None:
         self._height = height
         self._width = width
         self._goal = (height // 2, width // 2)  # assume odd maze size for simplicity
 
         # starting position and direction
-        self._mouse_pos: tuple[int, int] = (height - 1, 0)
-        self._mouse_dir: Direction = Direction.NORTH
+        self._start_pos = (
+            start_pos if start_pos else (height - 1, 0)  # default bottom left
+        )
+        self._mouse_pos = self._start_pos
+        self._mouse_dir = start_dir
 
         # initialise empty walls and distances
         self._h_walls = [[False] * width for _ in range(height + 1)]
@@ -63,6 +72,13 @@ class Maze:
     @goal.setter
     def goal(self, position: tuple[int, int]) -> None:
         self._goal = position
+
+    def at_goal(self) -> bool:
+        return self._mouse_pos == self._goal
+
+    @property
+    def start_position(self) -> tuple[int, int]:
+        return self._start_pos
 
     @property
     def mouse_position(self) -> tuple[int, int]:
@@ -220,8 +236,6 @@ def update_walls(maze: Maze) -> None:
 
 
 def main():
-    # the API uses (x, y) cartesian coordinates
-    # the Maze class uses (r, c) coordinates
     width = API.mazeWidth()
     height = API.mazeHeight()
     assert width and height
@@ -230,12 +244,13 @@ def main():
 
     while True:
         # mouse goes back and forth between start and centre
-        # if maze.goal == (row, col):
-        #     if maze.goal == start:
-        #         maze.goal = height // 2, width // 2
-        #     else:
-        #         log("Centre reached")
-        #         maze.goal = start
+        if maze.at_goal():
+            if maze.goal == maze.start_position:
+                log("Start reached")
+                maze.goal = height // 2, width // 2
+            else:
+                log("Centre reached")
+                maze.goal = maze.start_position
 
         update_walls(maze)
         maze.floodfill()
