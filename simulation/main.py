@@ -6,11 +6,20 @@ from enum import Enum
 ROW_NUM = 9
 COLUMN_NUM = 9
 
+ROW_INDEX = 0
+COLUMN_INDEX = 1
+
 #For checking floodfill points
-NORTH_INDEX = 0
-EAST_INDEX = 1
-SOUTH_INDEX = 2
-WEST_INDEX = 3
+#NORTH_INDEX = 0
+#EAST_INDEX = 1
+#SOUTH_INDEX = 2
+#WEST_INDEX = 3
+
+class Direction(Enum):
+    NORTH = (-1, 0)
+    SOUTH = (1, 0)
+    EAST = (0, 1)
+    WEST = (0, -1)
 
 def get_neighbour_coords(row, col):
         """This function returns the north, east, south and west coordinates of the points relative
@@ -27,11 +36,40 @@ def get_neighbour_coords(row, col):
             elif neighbour_points[i][1] < 0 or neighbour_points[i][1] > COLUMN_NUM-1:
                 neighbour_points[i] = None
         return neighbour_points
-class Direction(Enum):
-    NORTH = (-1, 0)
-    SOUTH = (1, 0)
-    EAST = (0, 1)
-    WEST = (0, -1)
+
+def check_bounds(row, col, direction):
+    """Checks if a neighbouring cell is within the bounds of the maze"""
+    (new_row, new_col) = (row+direction.value[ROW_INDEX], col+direction.value[COLUMN_INDEX])
+    if new_row < 0 or new_row > ROW_NUM-1:
+        return False
+    if new_col < 0 or new_col > COLUMN_NUM-1:
+        return False  
+    return (new_row, new_col)
+
+def can_move(row, col, direction, hor_walls, vert_walls):
+    """Checks if the neighbouring cell can be accessed (i.e. there are no walls)"""
+    if (direction == Direction.NORTH):
+        #For North, we are looking at a horizontal wall
+        if (hor_walls[row][col] == False):
+            #No walls in the way
+            return True
+        return False
+    if (direction == Direction.EAST):
+        #For east, we deal with vertical walls
+        if (vert_walls[row][col+1] == False):
+            return True
+        return False
+    if (direction == Direction.SOUTH):
+        #For south we deal with a horizontal wall
+        if (hor_walls[row+1][col] == False):
+            return True
+        return False
+    if (direction == Direction.WEST):
+        #For west we deal with a vertical wall
+        if (vert_walls[row][col] == False):
+            return True
+        return False
+
 
 class Maze:
     def __init__(self, row_num, col_num):
@@ -93,33 +131,28 @@ class Maze:
             #Pop the zero cell and save its row and column
             (row, col) = dq.popleft()
             #Now check the boxes north, east, south and west of the point
-            neighbour_points = get_neighbour_coords(row, col)
             #Note that in this for loop False + 1 = 1 (cool thing in python)
-            for i in range(4):
-                #First check if the neighbour cell is unvisited
-                if (neighbour_points[i] != None) and (floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] == -1):
-                    if (i == NORTH_INDEX):
-                        #Looking at the north cell so thus horizontal walls
-                        if hor_walls[row][col] == False:
-                            floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
-                            #Add cell to queue
-                            dq.append(neighbour_points[i])
-                    elif (i == EAST_INDEX):
-                        #Looking at the east cell so thus vertical walls
-                        if vert_walls[row][col+1] == False:
-                            #There are no walls
-                            floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
-                            dq.append(neighbour_points[i])
-                    elif (i == SOUTH_INDEX):
-                        #Looking at the south cell, so horizontal walls
-                        if hor_walls[row+1][col] == False:
-                            floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
-                            dq.append(neighbour_points[i])
-                    elif (i == WEST_INDEX):
-                        #Looking at the west cell, so thus vertical walls
-                        if vert_walls[row][col] == False:
-                            floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
-                            dq.append(neighbour_points[i])
+            for direction in [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]:
+                #First check if the cell is unvisited and valid
+                bounds_result = check_bounds(row, col, direction)
+                if bounds_result == False:
+                    continue
+                elif floodfill_distances[bounds_result[ROW_INDEX]][bounds_result[COLUMN_INDEX]] != -1:
+                    #This cell has already been visited
+                    continue
+                else:
+                    #Now this is a valid cell, we now need to check if the cell is accessible
+                    #Here use a can_move function that takes the current cell and the direction
+                    if can_move(row, col, direction, hor_walls, vert_walls):
+                        #Here, if the function returns True, we can update floodfill distances
+                        #n_row stands for neighbour row, n_col stands for neighbour col
+                        (n_row, n_col) = (row+direction.value[ROW_INDEX], col+direction.value[COLUMN_INDEX])
+                        floodfill_distances[n_row][n_col] = floodfill_distances[row][col]+1
+                        dq.append((n_row, n_col))
+
+                
+        
+                
 
 
 
@@ -137,10 +170,16 @@ def main():
     maze.initialise_wall_variables(maze.hor_walls, maze.vert_walls)
     maze.initialise_floodfill_nums(maze.floodfill_distances, maze._row_num, maze._col_num)
     maze.calculate_floodfill_distances(maze._row_num, maze._col_num, maze.dq, maze.floodfill_distances, maze.hor_walls, maze.vert_walls)
-    print(maze.floodfill_distances[1][2])
-    print(maze.floodfill_distances[2][1])
-    print(maze.floodfill_distances[3][1])
-    print(maze.floodfill_distances[2][3])
+    
+    for r in range(ROW_NUM):
+        for c in range(COLUMN_NUM):
+            val = maze.floodfill_distances[r][c]
+            # Convert -1 (unvisited) to blank
+            if val == -1:
+                display_val = ""
+            else:
+                display_val = str(val)
+            API.setText(r, c, display_val)
 
     #Wall follower algorithm    
     while True:
