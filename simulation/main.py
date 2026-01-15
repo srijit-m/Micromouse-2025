@@ -6,6 +6,11 @@ from enum import Enum
 ROW_NUM = 9
 COLUMN_NUM = 9
 
+#For checking floodfill points
+NORTH_INDEX = 0
+EAST_INDEX = 1
+SOUTH_INDEX = 2
+WEST_INDEX = 3
 
 def get_neighbour_coords(row, col):
         """This function returns the north, east, south and west coordinates of the points relative
@@ -17,9 +22,9 @@ def get_neighbour_coords(row, col):
         neighbour_points.append((row+Direction.SOUTH.value[0], col+Direction.SOUTH.value[1]))
         neighbour_points.append((row+Direction.WEST.value[0], col+Direction.WEST.value[1]))
         for i in range(4):
-            if neighbour_points[i][0] < 0 or neighbour_points[i][0] > 8:
+            if neighbour_points[i][0] < 0 or neighbour_points[i][0] > ROW_NUM-1:
                 neighbour_points[i] = None
-            elif neighbour_points[i][1] < 0 or neighbour_points[i][1] > 8:
+            elif neighbour_points[i][1] < 0 or neighbour_points[i][1] > COLUMN_NUM-1:
                 neighbour_points[i] = None
         return neighbour_points
 class Direction(Enum):
@@ -65,7 +70,7 @@ class Maze:
         for i in range(row_num):
             for j in range(col_num):
                 #Showing uninitialised distances
-                floodfill_distances[i].append(False)
+                floodfill_distances[i].append(-1)
         
         floodfill_distances[row_num//2][col_num//2] = 0
     def reset_floodfill_distances(self, floodfill_distances, row_num, col_num):
@@ -75,7 +80,7 @@ class Maze:
         for i in range(row_num):
             for j in range(col_num):
                 #Showing uninitialised distances
-                floodfill_distances[i][j] = False    
+                floodfill_distances[i][j] = -1    
         floodfill_distances[row_num//2][col_num//2] = 0
       
     def calculate_floodfill_distances(self, row_num, col_num, dq, floodfill_distances, hor_walls, vert_walls):
@@ -92,25 +97,25 @@ class Maze:
             #Note that in this for loop False + 1 = 1 (cool thing in python)
             for i in range(4):
                 #First check if the neighbour cell is unvisited
-                if (neighbour_points[i] != None) and (floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] == False):
-                    if (i == 0):
+                if (neighbour_points[i] != None) and (floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] == -1):
+                    if (i == NORTH_INDEX):
                         #Looking at the north cell so thus horizontal walls
                         if hor_walls[row][col] == False:
                             floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
                             #Add cell to queue
                             dq.append(neighbour_points[i])
-                    elif (i == 1):
+                    elif (i == EAST_INDEX):
                         #Looking at the east cell so thus vertical walls
                         if vert_walls[row][col+1] == False:
                             #There are no walls
                             floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
                             dq.append(neighbour_points[i])
-                    elif (i == 2):
+                    elif (i == SOUTH_INDEX):
                         #Looking at the south cell, so horizontal walls
                         if hor_walls[row+1][col] == False:
                             floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
                             dq.append(neighbour_points[i])
-                    elif (i == 3):
+                    elif (i == WEST_INDEX):
                         #Looking at the west cell, so thus vertical walls
                         if vert_walls[row][col] == False:
                             floodfill_distances[neighbour_points[i][0]][neighbour_points[i][1]] = floodfill_distances[row][col] +1
