@@ -95,8 +95,13 @@ class Maze:
     def get_wall(
         self, position: tuple[int, int], direction: Direction
     ) -> tuple[list[list[bool]], int, int]:
-        """Returns the matrix representing horizontal or vertical walls and the
-        indexes corresponding to the wall at the specified position"""
+        """Returns the appropriate wall matrix and the indices for the wall
+        adjacent to the specified position
+
+        Returns:
+            A tuple (walls, row_idx, col_idx), where the wall is accessed by
+            walls[row_idx][col_idx]
+        """
         row, col = position
         if direction == Direction.NORTH:
             return self._h_walls, row, col
@@ -108,13 +113,18 @@ class Maze:
             return self._v_walls, row, col
         return None
 
+    def check_bounds(self, position: tuple[int, int]) -> bool:
+        """Return whether the position is within the bounds of the maze"""
+        row, col = position
+        return 0 <= row < self.height and 0 <= col < self.width
+
     def add_wall(self, position: tuple[int, int], direction: Direction) -> None:
-        if 0 <= position[0] < self.height and 0 <= position[1] < self.width:
+        if self.check_bounds(position):
             walls, r, c = self.get_wall(position, direction)
             walls[r][c] = True
 
     def is_wall(self, position: tuple[int, int], direction: Direction) -> bool:
-        if 0 <= position[0] < self.height and 0 <= position[1] < self.width:
+        if self.check_bounds(position):
             walls, r, c = self.get_wall(position, direction)
             return walls[r][c]
         return False
@@ -128,11 +138,11 @@ class Maze:
         """
         row, col = position
         neighbours = []
-        for d in Direction:
-            nr, nc = row + d.dr, col + d.dc
-            if 0 <= nr < self._height and 0 <= nc < self._width:  # within bounds
-                if not self.is_wall(position, d):  # not blocked by a wall
-                    neighbours.append((nr, nc, d))
+        for direction in Direction:
+            neighbour = row + direction.dr, col + direction.dc
+            if self.check_bounds(neighbour):  # within bounds
+                if not self.is_wall(position, direction):  # not blocked by a wall
+                    neighbours.append((*neighbour, direction))
         return neighbours
 
     def floodfill(self) -> None:
