@@ -2,307 +2,306 @@ import API
 import sys
 from collections import deque
 from enum import Enum
+from typing import Optional
 
-ROW_NUM = 16
-COLUMN_NUM = 16
-
-ROW_INDEX = 0
-COLUMN_INDEX = 1
-
-#For checking floodfill points
-#NORTH_INDEX = 0
-#EAST_INDEX = 1
-#SOUTH_INDEX = 2
-#WEST_INDEX = 3
 
 class Direction(Enum):
+    # direction deltas (dr, dc)
     NORTH = (-1, 0)
-    SOUTH = (1, 0)
     EAST = (0, 1)
+    SOUTH = (1, 0)
     WEST = (0, -1)
 
-def map_for_simulator(floodfill_distances):
-    """Return a new 2D list flipped vertically so it matches simulator coordinates."""
-    ROW_NUM = len(floodfill_distances)
-    COLUMN_NUM = len(floodfill_distances[0])
-    
-    sim_array = []
-    for r in range(ROW_NUM):
-        sim_array.append(floodfill_distances[ROW_NUM - 1 - r][:])  # take a copy of the row, flipped vertically
-    
-    return sim_array
+    @property
+    def dr(self) -> int:
+        return self.value[0]
 
-def check_bounds(row, col, direction):
-    """Checks if a neighbouring cell is within the bounds of the maze"""
-    (new_row, new_col) = (row+direction.value[ROW_INDEX], col+direction.value[COLUMN_INDEX])
-    if new_row < 0 or new_row > ROW_NUM-1:
-        return False
-    if new_col < 0 or new_col > COLUMN_NUM-1:
-        return False  
-    return (new_row, new_col)
+    @property
+    def dc(self) -> int:
+        return self.value[1]
 
-def can_move(row, col, direction, hor_walls, vert_walls):
-    """Checks if the neighbouring cell can be accessed (i.e. there are no walls)
-    Direction is the direction of the cell relative to the current cell"""
-    if (direction == Direction.NORTH):
-        #For North, we are looking at a horizontal wall
-        if (hor_walls[row][col] == False):
-            #No walls in the way
-            return True
-        return False
-    if (direction == Direction.EAST):
-        #For east, we deal with vertical walls
-        if (vert_walls[row][col+1] == False):
-            return True
-        return False
-    if (direction == Direction.SOUTH):
-        #For south we deal with a horizontal wall
-        if (hor_walls[row+1][col] == False):
-            return True
-        return False
-    if (direction == Direction.WEST):
-        #For west we deal with a vertical wall
-        if (vert_walls[row][col] == False):
-            return True
-        return False
+    def rotate(self, steps: int):
+        directions = list(type(self))
+        i = directions.index(self)
+        return directions[(i + steps) % len(directions)]
 
-def compute_left_wall_direction(direction):
-    return {
-        Direction.NORTH: Direction.WEST,
-        Direction.WEST: Direction.SOUTH,
-        Direction.SOUTH: Direction.EAST,
-        Direction.EAST: Direction.NORTH,
-    }[direction]
+    @property
+    def left(self):
+        return self.rotate(-1)
 
-def compute_right_wall_direction(direction):
-    return {
-        Direction.NORTH: Direction.EAST,
-        Direction.EAST: Direction.SOUTH,
-        Direction.SOUTH: Direction.WEST,
-        Direction.WEST: Direction.NORTH,
-    }[direction]
+    @property
+    def right(self):
+        return self.rotate(1)
+
+
+class Move(Enum):
+    FORWARD = 0
+    RIGHT = 1
+    BACKWARD = 2
+    LEFT = 3
+
+
+class Mouse:
+    def __init__(self, start: tuple[int, int], direction: Direction) -> None:
+        self._position = start
+        self._direction = direction
+
+    @property
+    def position(self) -> tuple[int, int]:
+        return self._position
+
+    @property
+    def direction(self) -> Direction:
+        return self._direction
+
+    def turn_left(self) -> None:
+        self._direction = self._direction.left
+
+    def turn_right(self) -> None:
+        self._direction = self._direction.right
+
+    def move_forward(self) -> None:
+        row, col = self._position
+        dr, dc = self._direction.dr, self._direction.dc
+        self._position = (row + dr, col + dc)
+
+    def apply_move(self, move: Move) -> None:
+        if move == Move.FORWARD:
+            self.move_forward()
+        elif move == Move.RIGHT:
+            self.turn_right()
+            self.move_forward()
+        elif move == Move.BACKWARD:
+            self.turn_right()
+            self.turn_right()
+            self.move_forward()
+        elif move == Move.LEFT:
+            self.turn_left()
+            self.move_forward()
 
 
 class Maze:
-    def __init__(self, row_num, col_num):
-        self._row_num = row_num
-        self._col_num = col_num
-        #Make lists for horizontal and vertical walls
-        self.hor_walls = [[] for i in range(row_num+1)]
-        self.vert_walls = [[] for i in range(row_num)]
-        #Setup list for floodfill distances
-        self.floodfill_distances = [[] for i in range(row_num)]
-        #Initialising an empty queue for the floodfill algorithm
-        self.dq = deque()
-    
-    def initialise_wall_variables(self, hor_walls, vert_walls):
-        """Populating the wall variables with booleans of true and false.
-        Note that we already know that the outer walls are filled up"""
-        #Horizontal walls first
-        for i in range(ROW_NUM+1):
-            for j in range(ROW_NUM):
-                if i==0 or i == ROW_NUM:
-                    hor_walls[i].append(True)
-                else:
-                    hor_walls[i].append(False)
-        #Vertical walls now
-        for i in range(ROW_NUM):
-            for j in range(ROW_NUM+1):
-                if j == 0 or j == ROW_NUM:
-                    vert_walls[i].append(True)
-                else:
-                    vert_walls[i].append(False)
-        
-        #Now we have walls on the boundary
-    def initialise_floodfill_nums(self, floodfill_distances, row_num, col_num):
-        """For the floodfill distance 2D array, only the centre goal cell is set to 0. The 
-        other cells are set to false/blank for now to show that they are not updated yet"""
-        for i in range(row_num):
-            for j in range(col_num):
-                #Showing uninitialised distances
-                floodfill_distances[i].append(-1)
-        
-        floodfill_distances[row_num//2][col_num//2] = 0
-    def reset_floodfill_distances(self, floodfill_distances, row_num, col_num):
-        """Here we want to reset the floodfill algorithm every time we hit a wall. 
-        For an already intialised array, we don't need to append elements so we can just
-        set the array values."""
-        for i in range(row_num):
-            for j in range(col_num):
-                #Showing uninitialised distances
-                floodfill_distances[i][j] = -1    
-        floodfill_distances[row_num//2][col_num//2] = 0
-        self.dq= deque()
-    
-    def update_walls(self, row, col, direction):
-        """Function to update horizontal or vertical walls"""
-        if (direction == Direction.NORTH):
-            #We have got a horizontal wall
-            self.hor_walls[row][col] = True
-            API.setWall(col, ROW_NUM-row-1, "n")
-        elif (direction == Direction.EAST):
-            #Vertical wall here
-            self.vert_walls[row][col+1] = True
-            API.setWall(col, ROW_NUM-row-1, "e")
-        elif (direction == Direction.SOUTH):
-            #Horizontal wall here
-            self.hor_walls[row+1][col] = True
-            API.setWall(col, ROW_NUM-row-1, "s")
-        elif (direction == Direction.WEST):
-            #Vertical wall here
-            self.vert_walls[row][col] = True
-            API.setWall(col, ROW_NUM-row-1, "w")
-      
-    def calculate_floodfill_distances(self, row_num, col_num, dq, floodfill_distances, hor_walls, vert_walls):
-        #Add the goal cell to the queue
-        centre_point = (row_num//2, col_num//2)
-        #print(f"Row: {centre_point[0]}, Column: {centre_point[1]}")
-        dq.append(centre_point)
-        while dq:
-            #Carry out the floodfill algorithm
-            #Pop the zero cell and save its row and column
-            (row, col) = dq.popleft()
-            #Now check the boxes north, east, south and west of the point
-            #Note that in this for loop False + 1 = 1 (cool thing in python)
-            for direction in [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]:
-                #First check if the cell is unvisited and valid
-                bounds_result = check_bounds(row, col, direction)
-                if bounds_result == False:
-                    continue
-                elif floodfill_distances[bounds_result[ROW_INDEX]][bounds_result[COLUMN_INDEX]] != -1:
-                    #This cell has already been visited
-                    continue
-                else:
-                    #Now this is a valid cell, we now need to check if the cell is accessible
-                    #Here use a can_move function that takes the current cell and the direction
-                    if can_move(row, col, direction, hor_walls, vert_walls):
-                        #Here, if the function returns True, we can update floodfill distances
-                        #n_row stands for neighbour row, n_col stands for neighbour col
-                        (n_row, n_col) = (row+direction.value[ROW_INDEX], col+direction.value[COLUMN_INDEX])
-                        floodfill_distances[n_row][n_col] = floodfill_distances[row][col]+1
-                        dq.append((n_row, n_col))
-    def find_lowest_neighbours(self, row, col):
-        """This function will return a list of tuples of the form (direction, row, col) that contain the neighbour/s
-        with the lowest floodfill numbers"""
-        neighbour_list = []
-        for direction in [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]:
-            bounds_check = check_bounds(row, col, direction)
-            if (bounds_check != False):
-                #There is a valid point
-                p_row, p_col = (row+direction.value[ROW_INDEX], col+direction.value[COLUMN_INDEX])
-                if self.floodfill_distances[p_row][p_col] < self.floodfill_distances[row][col]:
-                    neighbour_list.append((direction, p_row, p_col))
-        return neighbour_list
+    def __init__(self, width: int, height: int) -> None:
+        self._height = height
+        self._width = width
+        self._goal = (height // 2, width // 2)  # assume odd maze size for simplicity
+
+        # initialise empty walls and distances
+        self._h_walls = [[False] * width for _ in range(height + 1)]
+        self._v_walls = [[False] * (width + 1) for _ in range(height)]
+        self._dists = [[-1] * width for _ in range(height)]
+
+    @property
+    def width(self) -> int:
+        return self._width
+
+    @property
+    def height(self) -> int:
+        return self._height
+
+    @property
+    def goal(self) -> tuple[int, int]:
+        return self._goal
+
+    @goal.setter
+    def goal(self, position: tuple[int, int]) -> None:
+        self._goal = position
+
+    @property
+    def dists(self) -> list[list[int]]:
+        return self._dists
+
+    def get_wall(
+        self, position: tuple[int, int], direction: Direction
+    ) -> tuple[list[list[bool]], int, int]:
+        """Returns the appropriate wall matrix and the indices for the wall
+        adjacent to the specified position
+
+        Returns:
+            A tuple (walls, row_idx, col_idx), where the wall is accessed by
+            walls[row_idx][col_idx]
+        """
+        row, col = position
+        if direction == Direction.NORTH:
+            return self._h_walls, row, col
+        if direction == Direction.EAST:
+            return self._v_walls, row, col + 1
+        if direction == Direction.SOUTH:
+            return self._h_walls, row + 1, col
+        if direction == Direction.WEST:
+            return self._v_walls, row, col
+        return None
+
+    def check_bounds(self, position: tuple[int, int]) -> bool:
+        """Return whether the position is within the bounds of the maze"""
+        row, col = position
+        return 0 <= row < self.height and 0 <= col < self.width
+
+    def add_wall(self, position: tuple[int, int], direction: Direction) -> None:
+        if self.check_bounds(position):
+            walls, r, c = self.get_wall(position, direction)
+            walls[r][c] = True
+
+    def is_wall(self, position: tuple[int, int], direction: Direction) -> bool:
+        if self.check_bounds(position):
+            walls, r, c = self.get_wall(position, direction)
+            return walls[r][c]
+        return False
+
+    def neighbours(self, position: tuple[int, int]) -> list[tuple[int, int, Direction]]:
+        """Returns the accessible neighbouring cells from the specified position,
+        i.e. cells that are within bounds and not blocked by a wall.
+
+        Returns:
+            List of tuples where each tuple contains (row, col, direction)
+        """
+        row, col = position
+        neighbours = []
+        for direction in Direction:
+            neighbour = row + direction.dr, col + direction.dc
+            if self.check_bounds(neighbour):  # within bounds
+                if not self.is_wall(position, direction):  # not blocked by a wall
+                    neighbours.append((*neighbour, direction))
+        return neighbours
+
+    def floodfill(self) -> None:
+        self._dists = [[-1] * self._width for _ in range(self._height)]
+        self._dists[self._goal[0]][self._goal[1]] = 0
+        q = deque([self._goal])
+        while q:
+            position = q.popleft()
+            for nr, nc, _ in self.neighbours(position):
+                if self._dists[nr][nc] == -1:  # check cell is blank
+                    self._dists[nr][nc] = self._dists[position[0]][position[1]] + 1
+                    q.append((nr, nc))
+
+    def next_direction(self, position: tuple[int, int]) -> Direction:
+        """Returns the direction to move, based on the current position.
+
+        Assumes that distances have been calculated already
+        """
+        dists = self.dists
+        min_dist = dists[position[0]][position[1]]
+        next_dir = Direction.NORTH
+        # find neighbouring cell with lowest distance from goal
+        for nr, nc, direction in self.neighbours(position):
+            dist = dists[nr][nc]
+            if dist != -1 and dist < min_dist:
+                min_dist = dist
+                next_dir = direction
+        return next_dir
+
+    def next_move(self, direction: Direction, target: Direction) -> Move:
+        """Returns the required move to make based on the current direction and
+        the target direction"""
+        # for simplicity, take advantage of the fact that the Direction enum is ordered clockwise
+        dirs = list(Direction)
+        offset = (dirs.index(target) - dirs.index(direction)) % len(dirs)
+
+        if offset == 0:
+            return Move.FORWARD
+        if offset == 1:
+            return Move.RIGHT
+        if offset == 2:
+            return Move.BACKWARD
+        return Move.LEFT  # offset == 3
 
 
+def rc_to_xy(position: tuple[int, int], num_rows: int) -> tuple[int, int]:
+    """Convert from (row, col) to (x, y) coordinates"""
+    return position[1], num_rows - 1 - position[0]
 
-#Creating a mouse class to implement floodfill dynamically
-class Mouse:
-    def __init__(self, row_pos, col_pos, direction, maze):
-        self.row_pos = row_pos
-        self.col_pos = col_pos
-        #Note that direction will be one of our direction Enums
-        self.goal_row = ROW_NUM//2
-        self.goal_col = COLUMN_NUM//2
-        self.direction = direction
-        self.maze = maze
-    def move_forward(self):
-        self.row_pos += self.direction.value[0]
-        self.col_pos += self.direction.value[1]
-        API.moveForward()
 
-    def print_coords(self):
-        """This function is solely for debugging"""
-        print(f"row: {self.row_pos}, col: {self.col_pos}")
-        print(f"Direction {self.direction}")
-    def turn_right(self):
-        if self.direction == Direction.NORTH:
-            self.direction = Direction.EAST
-        elif self.direction == Direction.EAST:
-            self.direction = Direction.SOUTH
-        elif self.direction == Direction.SOUTH:
-            self.direction = Direction.WEST
-        elif self.direction == Direction.WEST:
-            self.direction = Direction.NORTH
-        API.turnRight()
-    def turn_left(self):
-        if self.direction == Direction.NORTH:
-            self.direction = Direction.WEST
-        elif self.direction == Direction.EAST:
-            self.direction = Direction.NORTH
-        elif self.direction == Direction.SOUTH:
-            self.direction = Direction.EAST
-        elif self.direction == Direction.WEST:
-            self.direction = Direction.SOUTH
-        API.turnLeft()
-    
-    def sense_walls(self):
-        """This function makes the micromouse sense walls directly in front, to the left and 
-        to the right"""
-        if (API.wallLeft()):
-            #Update this in the wall array
-            #Find where the wall actually is (n,e,s,w)
-            wall_dir = compute_left_wall_direction(self.direction)
-            self.maze.update_walls(self.row_pos, self.col_pos, wall_dir)
-        if (API.wallRight()):
-            wall_dir = compute_right_wall_direction(self.direction)
-            self.maze.update_walls(self.row_pos, self.col_pos, wall_dir)
-            
-        if (API.wallFront()):
-            self.maze.update_walls(self.row_pos, self.col_pos, self.direction)
-         
+def display_walls(maze: Maze, mouse: Mouse) -> None:
+    """Display the walls at the mouse's current position"""
+    for direction in Direction:
+        if maze.is_wall(mouse.position, direction):
+            x, y = rc_to_xy(mouse.position, maze.height)
+            if direction == Direction.NORTH:
+                API.setWall(x, y, "n")
+            elif direction == Direction.EAST:
+                API.setWall(x, y, "e")
+            elif direction == Direction.SOUTH:
+                API.setWall(x, y, "s")
+            elif direction == Direction.WEST:
+                API.setWall(x, y, "w")
 
-def log(string):
+
+def display_dists(maze: Maze) -> None:
+    dists = maze.dists
+    for row_idx, row in enumerate(dists):
+        for col_idx, dist in enumerate(row):
+            if dist != -1:
+                API.setText(*rc_to_xy((row_idx, col_idx), maze.height), dist)
+
+
+def log(string) -> None:
     sys.stderr.write("{}\n".format(string))
     sys.stderr.flush()
 
+
+def update_walls(maze: Maze, mouse: Mouse) -> None:
+    """Update the known walls in the maze at the mouse's current position"""
+    position = mouse.position
+    direction = mouse.direction
+    if API.wallFront():
+        maze.add_wall(position, direction)
+    if API.wallLeft():
+        maze.add_wall(position, direction.left)
+    if API.wallRight():
+        maze.add_wall(position, direction.right)
+
+
 def main():
-    log("Running... the sim")
-    API.setColor(0, 0, "G")
-    API.setText(0, 0, "abc")
+    width = API.mazeWidth()
+    height = API.mazeHeight()
+    assert width and height
 
-    #Initialise details of the maze
-    maze = Maze(ROW_NUM, COLUMN_NUM)
-    maze.initialise_wall_variables(maze.hor_walls, maze.vert_walls)
-    maze.initialise_floodfill_nums(maze.floodfill_distances, maze._row_num, maze._col_num)   
-    maze.calculate_floodfill_distances(maze._row_num, maze._col_num, maze.dq, maze.floodfill_distances, maze.hor_walls, maze.vert_walls)
-    for r in range(ROW_NUM):
-        for c in range(COLUMN_NUM):
-            API.setText(c, ROW_NUM-1-r, maze.floodfill_distances[r][c])
+    start = (height - 1, 0)
+    direction = Direction.NORTH
 
-    mouse = Mouse(ROW_NUM-1, 0, Direction.NORTH, maze)   
-    #while loop for movement
-    while not ((mouse.row_pos == mouse.goal_row) and (mouse.col_pos == mouse.goal_col)):
-        #Thus keep moving until we reach the centre
-        next_cell = []
-        mouse.sense_walls()
-        #Now find the lowest neighbour cell
-        neighbour_floodfill = mouse.maze.find_lowest_neighbours(mouse.row_pos, mouse.col_pos)
-        print(neighbour_floodfill)
-        for neighbour in neighbour_floodfill:
-            #Check if the neighbour is accessible
-            if (can_move(mouse.row_pos, mouse.col_pos, neighbour[0], mouse.maze.hor_walls, mouse.maze.vert_walls)):
-                next_cell.append(neighbour)
-        #Ok, now we know which cell to move to and its direction relative to the row cell
-        if next_cell:
-            if mouse.direction == next_cell[0][0]:
-                mouse.move_forward()
+    maze = Maze(width, height)
+    mouse = Mouse(start, direction)
+
+    while True:
+        # mouse goes back and forth between start and centre
+        if mouse.position == maze.goal:
+            if maze.goal == start:
+                log("Start reached")
+                maze.goal = height // 2, width // 2
             else:
-                while mouse.direction != next_cell[0][0]:
-                    mouse.turn_right()
-                mouse.move_forward()
-        else:
-            #No viable next cell was found
-            #Thus, we need to recalculate floodfill
-            mouse.maze.reset_floodfill_distances(mouse.maze.floodfill_distances, mouse.maze._row_num, mouse.maze._col_num)
-            mouse.maze.calculate_floodfill_distances(mouse.maze._row_num, mouse.maze._col_num, mouse.maze.dq, mouse.maze.floodfill_distances, mouse.maze.hor_walls, mouse.maze.vert_walls)
-            API.clearAllText()
-            for r in range(ROW_NUM):
-                for c in range(COLUMN_NUM):
-                    API.setText(c, ROW_NUM-1-r, maze.floodfill_distances[r][c])
-            continue
+                log("Centre reached")
+                maze.goal = start
 
-      
+        # update walls and distances
+        update_walls(maze, mouse)
+        maze.floodfill()
+
+        # display walls and distances for debugging
+        display_walls(maze, mouse)
+        display_dists(maze)
+
+        # determine next move
+        target_dir = maze.next_direction(mouse.position)
+        move = maze.next_move(mouse.direction, target_dir)
+
+        # update internal mouse state
+        mouse.apply_move(move)
+
+        # move the actual mouse
+        if move == Move.FORWARD:
+            API.moveForward()
+        elif move == Move.RIGHT:
+            API.turnRight()
+            API.moveForward()
+        elif move == Move.BACKWARD:
+            API.turnRight()
+            API.turnRight()
+            API.moveForward()
+        elif move == Move.LEFT:
+            API.turnLeft()
+            API.moveForward()
+
 
 if __name__ == "__main__":
     main()
