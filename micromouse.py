@@ -170,6 +170,15 @@ class Micromouse():
         self.invert_motor_1()
         self.motor_2.spin_backward(power)
         self.motor_1.spin_backward(power)
+    
+    def turn_right(self, power = 255):
+        self.motor_2.spin_forward(power)
+        self.motor_1.spin_forward(power)
+    
+    def turn_left(self, power = 255):
+        self.motor_2.spin_backward(power)
+        self.motor_1.spin_backward(power)
+
 
     def drive_stop(self):
         """

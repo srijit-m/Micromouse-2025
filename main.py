@@ -16,7 +16,7 @@ if __name__ == "__main__":
     mm.led_red_set(0)
     encoder_tuple  = mm.get_encoders()
     print(encoder_tuple)
-    mm.drive_backward(125)
+    mm.turn_left(125)
     time.sleep(3)
     mm.drive_stop()
     mm.led_red_set(1)
