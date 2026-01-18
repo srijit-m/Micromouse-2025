@@ -82,19 +82,11 @@ class Mouse:
     def turn_right(self) -> None:
         self._direction = self._direction.right
 
+    def turn_around(self) -> None:
+        self._direction = self._direction.behind
+
     def move_forward(self) -> None:
         self._position = step(self._position, self._direction)
-
-    def apply_move(self, move: Move) -> None:
-        if move == Move.FORWARD:
-            self.move_forward()
-        elif move == Move.TURN_LEFT:
-            self.turn_left()
-        elif move == Move.TURN_RIGHT:
-            self.turn_right()
-        elif move == Move.TURN_AROUND:
-            self.turn_right()
-            self.turn_right()
 
 
 class Maze:
@@ -179,23 +171,29 @@ class Maze:
         walls[x][y] = state
         return True
 
-    def is_wall(self, position: Position, direction: Direction) -> bool:
+    def is_wall(
+        self, position: Position, direction: Direction, assume_wall=False
+    ) -> bool:
         if self.within_bounds(position):
             walls, x, y = self.get_wall(position, direction)
+            if walls[x][y] == WallState.UNKNOWN:
+                return assume_wall
             return walls[x][y] == WallState.WALL
         return False
 
-    def floodfill(self) -> None:
+    def floodfill(self, goal: Position, require_valid_path=False) -> None:
         self._dists = [[-1] * self._height for _ in range(self._width)]
-        self.set_dist(self._goal, 0)
-        q = deque([self._goal])
+        self.set_dist(goal, 0)
+        q = deque([goal])
         while q:
             position = q.popleft()
             for direction in Direction:
                 neighbour = step(position, direction)
                 if (
                     self.within_bounds(neighbour)
-                    and not self.is_wall(position, direction)
+                    and not self.is_wall(
+                        position, direction, assume_wall=require_valid_path
+                    )
                     and self.get_dist(neighbour) == -1
                 ):
                     self.set_dist(neighbour, self.get_dist(position) + 1)
@@ -258,34 +256,24 @@ def update_walls(maze: Maze, mouse: Mouse) -> bool:
     position = mouse.position
     direction = mouse.direction
     updated = False
-    if API.wallFront():
-        updated |= maze.update_wall(position, direction, WallState.WALL)
-    else:
-        updated |= maze.update_wall(position, direction, WallState.EMPTY)
-    if API.wallLeft():
-        updated |= maze.update_wall(position, direction.left, WallState.WALL)
-    else:
-        updated |= maze.update_wall(position, direction.left, WallState.EMPTY)
-    if API.wallRight():
-        updated |= maze.update_wall(position, direction.right, WallState.WALL)
-    else:
-        updated |= maze.update_wall(position, direction.right, WallState.EMPTY)
+
+    front_wall_state = WallState.WALL if API.wallFront() else WallState.EMPTY
+    left_wall_state = WallState.WALL if API.wallLeft() else WallState.EMPTY
+    right_wall_state = WallState.WALL if API.wallRight() else WallState.EMPTY
+
+    updated |= maze.update_wall(position, direction, front_wall_state)
+    updated |= maze.update_wall(position, direction.left, left_wall_state)
+    updated |= maze.update_wall(position, direction.right, right_wall_state)
     return updated
 
 
-def extract_path(
-    maze: Maze, start_pos: Position, start_dir: Direction, goal: Position
-) -> list[Direction]:
+def extract_path(maze: Maze, mouse: Mouse, require_valid_path=True) -> list[Direction]:
     """Extract the shortest path as a list of directions from start to goal"""
-    old_goal = maze.goal
-    old_dists = maze.dists
-    if old_goal != goal:
-        maze.goal = goal
-        maze.floodfill()
+    maze.floodfill(maze.goal, require_valid_path)
 
     path = []
-    position = start_pos
-    direction = start_dir
+    position = mouse.start_position
+    direction = mouse.start_direction
 
     while position != maze.goal:
         next_dir = maze.next_direction(position, direction)
@@ -293,11 +281,6 @@ def extract_path(
 
         position = (position[0] + next_dir.dx, position[1] + next_dir.dy)
         direction = next_dir
-
-    # restore old goal and distances
-    if old_goal != goal:
-        maze.goal = old_goal
-        maze.dists = old_dists
 
     return path
 
@@ -356,33 +339,57 @@ def display_dists(maze: Maze) -> None:
                 API.setText(x, y, dist)
 
 
-def explore_maze(maze: Maze, mouse: Mouse) -> list[tuple[Move, int]]:
-    """Explore the maze and return optimal list of moves to solve maze"""
-    centre = maze.width // 2, maze.height // 2
-    last_path = None
-    while True:
-        if mouse.position == maze.goal:
-            if maze.goal == mouse.start_position:
-                log("Start reached")
-                new_goal = centre
-            else:
-                log("Centre reached")
-                new_goal = mouse.start_position
+def move_forward(mouse: Mouse):
+    mouse.move_forward()
+    API.moveForward()
 
-            path = extract_path(
-                maze, mouse.start_position, mouse.start_direction, centre
-            )
 
-            if path == last_path:  # path converged
-                return path_to_moves(compress_path(path), mouse.start_direction)
+def turn_right(mouse: Mouse):
+    mouse.turn_right()
+    API.turnRight()
 
-            last_path = path
-            maze.goal = new_goal
-            maze.floodfill()
 
-        # update walls and distances
-        if update_walls(maze, mouse):
-            maze.floodfill()  # only recalculate if walls changed
+def turn_around(mouse: Mouse):
+    mouse.turn_around()
+    API.turnRight()
+    API.turnRight()
+
+
+def turn_left(mouse: Mouse):
+    mouse.turn_left()
+    API.turnLeft()
+
+
+def turn_to_face(mouse: Mouse, direction: Direction) -> None:
+    if direction == mouse.direction.right:
+        mouse.turn_right()
+        API.turnRight()
+    elif direction == mouse.direction.behind:
+        mouse.turn_around()
+        API.turnRight()
+        API.turnRight()
+    elif direction == mouse.direction.left:
+        mouse.turn_left()
+        API.turnLeft()
+
+
+def move_mouse(mouse: Mouse, move: Move) -> None:
+    if move == Move.FORWARD:
+        move_forward(mouse)
+    elif move == Move.TURN_RIGHT:
+        turn_right(mouse)
+    elif move == Move.TURN_AROUND:
+        turn_around(mouse)
+    elif move == Move.TURN_LEFT:
+        turn_left(mouse)
+
+
+def search_to(maze: Maze, mouse: Mouse, goal: Position):
+    """Move to the target position at a safe speed while mapping the maze."""
+
+    while mouse.position != goal:
+        update_walls(maze, mouse)
+        maze.floodfill(goal)
 
         # display walls and distances for debugging
         display_walls(maze, mouse)
@@ -392,23 +399,22 @@ def explore_maze(maze: Maze, mouse: Mouse) -> list[tuple[Move, int]]:
         target_dir = maze.next_direction(mouse.position, mouse.direction)
         move = next_move(mouse.direction, target_dir)
 
-        # update internal mouse state
-        mouse.apply_move(move)
-
-        # move the actual mouse
-        execute_move(move)
+        # move the mouse
+        move_mouse(mouse, move)
 
 
-def execute_move(move: Move) -> None:
-    if move == Move.FORWARD:
-        API.moveForward()
-    elif move == Move.TURN_RIGHT:
-        API.turnRight()
-    elif move == Move.TURN_AROUND:
-        API.turnRight()
-        API.turnRight()
-    elif move == Move.TURN_LEFT:
-        API.turnLeft()
+def search_maze(maze: Maze, mouse: Mouse):
+    """Search to the goal, then search back to the start.
+
+    Assumes that the mouse is at the start position and orientation.
+    """
+    search_to(maze, mouse, maze.goal)
+    search_to(maze, mouse, mouse.start_position)
+    turn_to_face(mouse, mouse.start_direction)
+
+
+def speed_run(moves: list[tuple[Move, int]]):
+    pass
 
 
 def log(string) -> None:
@@ -425,7 +431,25 @@ def main():
     maze = Maze(WIDTH, HEIGHT)
     mouse = Mouse(START, HEADING)
 
-    moves = explore_maze(maze, mouse)
+    while True:
+        search_to(maze, mouse, maze.goal)
+
+        path = extract_path(maze, mouse, require_valid_path=True)
+        if extract_path(maze, mouse, require_valid_path=False) == path:
+            log("optimal path found")
+            break
+        else:
+            log("non-optimal path found")
+
+        search_to(maze, mouse, mouse.start_position)
+        turn_to_face(mouse, mouse.start_direction)
+
+        path = extract_path(maze, mouse, require_valid_path=True)
+        if extract_path(maze, mouse, require_valid_path=False) == path:
+            log("optimal path found")
+            break
+        else:
+            log("non-optimal path found")
 
     # fast run
     API.ackReset()
@@ -433,11 +457,11 @@ def main():
 
     time.sleep(1)
     log("starting fast run")
+    moves = path_to_moves(compress_path(path), HEADING)
     for move, count in moves:
         for _ in range(count):
             API.setColor(*mouse.position, "G")
-            mouse.apply_move(move)
-            execute_move(move)
+            move_mouse(mouse, move)
 
 
 if __name__ == "__main__":
