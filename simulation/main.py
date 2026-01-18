@@ -1,37 +1,44 @@
 import API
 import sys
 from collections import deque
-from enum import Enum
+from enum import Enum, IntEnum
 import time
+
+Position = tuple[int, int]
+
+
+class WallState(IntEnum):
+    EMPTY = 0
+    WALL = 1
+    UNKNOWN = 2
 
 
 class Direction(Enum):
-    # direction deltas (dr, dc)
-    NORTH = (-1, 0)
-    EAST = (0, 1)
-    SOUTH = (1, 0)
-    WEST = (0, -1)
+    # direction deltas (dx, dy)
+    NORTH = (0, 1)
+    EAST = (1, 0)
+    SOUTH = (0, -1)
+    WEST = (-1, 0)
 
     @property
-    def dr(self) -> int:
+    def dx(self) -> int:
         return self.value[0]
 
     @property
-    def dc(self) -> int:
+    def dy(self) -> int:
         return self.value[1]
-
-    def rotate(self, steps: int):
-        directions = list(type(self))
-        i = directions.index(self)
-        return directions[(i + steps) % len(directions)]
 
     @property
     def left(self):
-        return self.rotate(-1)
+        return Direction((-self.dy, self.dx))
 
     @property
     def right(self):
-        return self.rotate(1)
+        return Direction((self.dy, -self.dx))
+
+    @property
+    def behind(self):
+        return Direction((-self.dx, -self.dy))
 
 
 class Move(Enum):
@@ -42,14 +49,15 @@ class Move(Enum):
 
 
 class Mouse:
-    def __init__(self, start_pos: tuple[int, int], start_dir: Direction) -> None:
+
+    def __init__(self, start_pos: Position, start_dir: Direction) -> None:
         self._start_pos = start_pos
         self._start_dir = start_dir
         self._position = start_pos
         self._direction = start_dir
 
     @property
-    def start_position(self) -> tuple[int, int]:
+    def start_position(self) -> Position:
         return self._start_pos
 
     @property
@@ -57,7 +65,7 @@ class Mouse:
         return self._start_dir
 
     @property
-    def position(self) -> tuple[int, int]:
+    def position(self) -> Position:
         return self._position
 
     @property
@@ -75,9 +83,7 @@ class Mouse:
         self._direction = self._direction.right
 
     def move_forward(self) -> None:
-        row, col = self._position
-        dr, dc = self._direction.dr, self._direction.dc
-        self._position = (row + dr, col + dc)
+        self._position = step(self._position, self._direction)
 
     def apply_move(self, move: Move) -> None:
         if move == Move.FORWARD:
@@ -93,14 +99,14 @@ class Mouse:
 
 class Maze:
     def __init__(self, width: int, height: int) -> None:
-        self._height = height
         self._width = width
-        self._goal = (height // 2, width // 2)  # assume odd maze size for simplicity
+        self._height = height
+        self._goal = (width // 2, height // 2)  # assume odd maze size for simplicity
 
         # initialise empty walls and distances
-        self._h_walls = [[False] * width for _ in range(height + 1)]
-        self._v_walls = [[False] * (width + 1) for _ in range(height)]
-        self._dists = [[-1] * width for _ in range(height)]
+        self._h_walls = [[WallState.UNKNOWN] * (height + 1) for _ in range(width)]
+        self._v_walls = [[WallState.UNKNOWN] * height for _ in range(width + 1)]
+        self._dists = [[-1] * height for _ in range(width)]
 
     @property
     def width(self) -> int:
@@ -111,11 +117,11 @@ class Maze:
         return self._height
 
     @property
-    def goal(self) -> tuple[int, int]:
+    def goal(self) -> Position:
         return self._goal
 
     @goal.setter
-    def goal(self, position: tuple[int, int]) -> None:
+    def goal(self, position: Position) -> None:
         self._goal = position
 
     @property
@@ -126,112 +132,105 @@ class Maze:
     def dists(self, dists) -> None:
         self._dists = dists
 
+    def get_dist(self, position: Position) -> int:
+        return self._dists[position[0]][position[1]]
+
+    def set_dist(self, position: Position, dist: int) -> None:
+        self._dists[position[0]][position[1]] = dist
+
     def get_wall(
-        self, position: tuple[int, int], direction: Direction
-    ) -> tuple[list[list[bool]], int, int]:
+        self, position: Position, direction: Direction
+    ) -> tuple[list[list[WallState]], int, int]:
         """Returns the appropriate wall matrix and the indices for the wall
         adjacent to the specified position
 
         Returns:
-            A tuple (walls, row_idx, col_idx), where the wall is accessed by
-            walls[row_idx][col_idx]
+            A tuple (walls, x_idx, y_idx), where the wall is accessed by
+            walls[x_idx][y_idx]
         """
-        row, col = position
+        x, y = position
         if direction == Direction.NORTH:
-            return self._h_walls, row, col
+            return self._h_walls, x, y + 1
         if direction == Direction.EAST:
-            return self._v_walls, row, col + 1
+            return self._v_walls, x + 1, y
         if direction == Direction.SOUTH:
-            return self._h_walls, row + 1, col
+            return self._h_walls, x, y
         if direction == Direction.WEST:
-            return self._v_walls, row, col
+            return self._v_walls, x, y
         return None
 
-    def check_bounds(self, position: tuple[int, int]) -> bool:
+    def within_bounds(self, position: Position) -> bool:
         """Return whether the position is within the bounds of the maze"""
-        row, col = position
-        return 0 <= row < self.height and 0 <= col < self.width
+        x, y = position
+        return 0 <= x < self.width and 0 <= y < self.height
 
-    def add_wall(self, position: tuple[int, int], direction: Direction) -> bool:
-        """Add a wall to the maze and return whether the wall state changed."""
-        if not self.check_bounds(position):
+    def update_wall(
+        self, position: Position, direction: Direction, state: WallState
+    ) -> bool:
+        """Update the state of a wall if it is unknown and return whether the wall state changed."""
+        if not self.within_bounds(position):
             return False
 
-        walls, r, c = self.get_wall(position, direction)
+        walls, x, y = self.get_wall(position, direction)
 
-        if walls[r][c]:
+        if walls[x][y] != WallState.UNKNOWN:
             return False
 
-        walls[r][c] = True
+        walls[x][y] = state
         return True
 
-    def is_wall(self, position: tuple[int, int], direction: Direction) -> bool:
-        if self.check_bounds(position):
-            walls, r, c = self.get_wall(position, direction)
-            return walls[r][c]
+    def is_wall(self, position: Position, direction: Direction) -> bool:
+        if self.within_bounds(position):
+            walls, x, y = self.get_wall(position, direction)
+            return walls[x][y] == WallState.WALL
         return False
 
-    def neighbours(self, position: tuple[int, int]) -> list[tuple[int, int, Direction]]:
-        """Returns the accessible neighbouring cells from the specified position,
-        i.e. cells that are within bounds and not blocked by a wall.
-
-        Returns:
-            List of tuples where each tuple contains (row, col, direction)
-        """
-        row, col = position
-        neighbours = []
-        for direction in Direction:
-            neighbour = row + direction.dr, col + direction.dc
-            if self.check_bounds(neighbour):  # within bounds
-                if not self.is_wall(position, direction):  # not blocked by a wall
-                    neighbours.append((*neighbour, direction))
-        return neighbours
-
     def floodfill(self) -> None:
-        self._dists = [[-1] * self._width for _ in range(self._height)]
-        self._dists[self._goal[0]][self._goal[1]] = 0
+        self._dists = [[-1] * self._height for _ in range(self._width)]
+        self.set_dist(self._goal, 0)
         q = deque([self._goal])
         while q:
             position = q.popleft()
-            for nr, nc, _ in self.neighbours(position):
-                if self._dists[nr][nc] == -1:  # check cell is blank
-                    self._dists[nr][nc] = self._dists[position[0]][position[1]] + 1
-                    q.append((nr, nc))
+            for direction in Direction:
+                neighbour = step(position, direction)
+                if (
+                    self.within_bounds(neighbour)
+                    and not self.is_wall(position, direction)
+                    and self.get_dist(neighbour) == -1
+                ):
+                    self.set_dist(neighbour, self.get_dist(position) + 1)
+                    q.append(neighbour)
 
-    def next_direction(
-        self, position: tuple[int, int], heading: Direction
-    ) -> Direction:
+    def next_direction(self, position: Position, heading: Direction) -> Direction:
         """Returns the direction to move, based on the current position and direction.
 
         When multiple neighbouring cells have the same distance from the goal,
-        the order of precedence is:
-        1. Forward
-        2. Left
-        3. Right
-        4. Backward
+        the order of precedence is: forward, left, right, backward.
         """
         directions = (
             heading,
             heading.left,
             heading.right,
-            heading.rotate(2),
+            heading.behind,
         )
 
-        row, col = position
-        current_dist = self.dists[row][col]
+        x, y = position
+        current_dist = self.dists[x][y]
 
         for direction in directions:
-            nr = row + direction.dr
-            nc = col + direction.dc
+            neighbour = step(position, direction)
 
-            # check that the neighbour is within bounds and not blocked by a wall
-            if not self.check_bounds((nr, nc)) or self.is_wall(position, direction):
+            if not self.within_bounds(neighbour) or self.is_wall(position, direction):
                 continue
 
-            if self.dists[nr][nc] == current_dist - 1:
+            if self.get_dist(neighbour) == current_dist - 1:
                 return direction
 
         return heading
+
+
+def step(pos: Position, dir: Direction) -> Position:
+    return pos[0] + dir.dx, pos[1] + dir.dy
 
 
 def next_move(direction: Direction, target: Direction) -> Move:
@@ -260,16 +259,22 @@ def update_walls(maze: Maze, mouse: Mouse) -> bool:
     direction = mouse.direction
     updated = False
     if API.wallFront():
-        updated |= maze.add_wall(position, direction)
+        updated |= maze.update_wall(position, direction, WallState.WALL)
+    else:
+        updated |= maze.update_wall(position, direction, WallState.EMPTY)
     if API.wallLeft():
-        updated |= maze.add_wall(position, direction.left)
+        updated |= maze.update_wall(position, direction.left, WallState.WALL)
+    else:
+        updated |= maze.update_wall(position, direction.left, WallState.EMPTY)
     if API.wallRight():
-        updated |= maze.add_wall(position, direction.right)
+        updated |= maze.update_wall(position, direction.right, WallState.WALL)
+    else:
+        updated |= maze.update_wall(position, direction.right, WallState.EMPTY)
     return updated
 
 
 def extract_path(
-    maze: Maze, start_pos: tuple[int, int], start_dir: Direction, goal: tuple[int, int]
+    maze: Maze, start_pos: Position, start_dir: Direction, goal: Position
 ) -> list[Direction]:
     """Extract the shortest path as a list of directions from start to goal"""
     old_goal = maze.goal
@@ -286,7 +291,7 @@ def extract_path(
         next_dir = maze.next_direction(position, direction)
         path.append(next_dir)
 
-        position = (position[0] + next_dir.dr, position[1] + next_dir.dc)
+        position = (position[0] + next_dir.dx, position[1] + next_dir.dy)
         direction = next_dir
 
     # restore old goal and distances
@@ -328,17 +333,11 @@ def path_to_moves(
         prev_dir = direction
     return moves
 
-
-def rc_to_xy(position: tuple[int, int], num_rows: int) -> tuple[int, int]:
-    """Convert from (row, col) to (x, y) coordinates"""
-    return position[1], num_rows - 1 - position[0]
-
-
 def display_walls(maze: Maze, mouse: Mouse) -> None:
     """Display the walls at the mouse's current position"""
     for direction in Direction:
         if maze.is_wall(mouse.position, direction):
-            x, y = rc_to_xy(mouse.position, maze.height)
+            x, y = mouse.position
             if direction == Direction.NORTH:
                 API.setWall(x, y, "n")
             elif direction == Direction.EAST:
@@ -350,16 +349,16 @@ def display_walls(maze: Maze, mouse: Mouse) -> None:
 
 
 def display_dists(maze: Maze) -> None:
-    dists = maze.dists
-    for row_idx, row in enumerate(dists):
-        for col_idx, dist in enumerate(row):
+    for x in range(maze.width):
+        for y in range(maze.height):
+            dist = maze.get_dist((x, y))
             if dist != -1:
-                API.setText(*rc_to_xy((row_idx, col_idx), maze.height), dist)
+                API.setText(x, y, dist)
 
 
 def explore_maze(maze: Maze, mouse: Mouse) -> list[tuple[Move, int]]:
     """Explore the maze and return optimal list of moves to solve maze"""
-    centre = maze.height // 2, maze.width // 2
+    centre = maze.width // 2, maze.height // 2
     last_path = None
     while True:
         if mouse.position == maze.goal:
@@ -417,16 +416,14 @@ def log(string) -> None:
     sys.stderr.flush()
 
 
+WIDTH = API.mazeWidth()
+HEIGHT = API.mazeHeight()
+START = (0, 0)
+HEADING = Direction.NORTH
+
 def main():
-    width = API.mazeWidth()
-    height = API.mazeHeight()
-    assert width and height
-
-    start_pos = (height - 1, 0)
-    start_dir = Direction.NORTH
-
-    maze = Maze(width, height)
-    mouse = Mouse(start_pos, start_dir)
+    maze = Maze(WIDTH, HEIGHT)
+    mouse = Mouse(START, HEADING)
 
     moves = explore_maze(maze, mouse)
 
@@ -438,7 +435,7 @@ def main():
     log("starting fast run")
     for move, count in moves:
         for _ in range(count):
-            API.setColor(*rc_to_xy(mouse.position, height), "G")
+            API.setColor(*mouse.position, "G")
             mouse.apply_move(move)
             execute_move(move)
 
