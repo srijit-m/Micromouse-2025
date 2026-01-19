@@ -15,10 +15,9 @@ if __name__ == "__main__":
     mm.led_red_set(1)
     mm.led_green_set(0)
     current_time = time.time()
-    mm.turn_left_90(150)
-    #mm.move_forward_encoders(20)
-    mm.led_red_set(0)
+    mm.move_forward(20)
     mm.led_green_set(1)
+    mm.led_red_set(0)
     
     
 

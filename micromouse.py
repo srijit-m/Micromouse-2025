@@ -14,8 +14,8 @@ import math
 import time
 
 #PID global constants
-K_P = 0.1
-K_D = 0.005
+K_P = 0.12
+K_D = 0
 #DT is in ms
 DT = 5
 
@@ -66,7 +66,7 @@ class Micromouse():
         self.motor_2.invert_motor()
         self.motor_1.invert_motor()
         self.encoder_1 = Encoder(19, 22)
-        self.encoder_2 = Encoder(15, 16)
+        self.encoder_2 = Encoder(15, 8)
         self.distance_PID = PID(K_P, K_D, DT)
 
 
@@ -292,11 +292,13 @@ class Micromouse():
     def turn_left_90(self, power):
         """A 90 degree left turn using encoders"""
         self.encoder_1.reset()
-        self.encoder_1.reset()
-        goal_counts = 470
+        self.encoder_2.reset()
+        difference = 0
+        goal_difference = 985
         self.turn_left(power)
-        while (self.get_encoder_1_counts() < goal_counts):
-            pass
+        while (difference < goal_difference):
+            difference = self.get_encoder_1_counts() - self.get_encoder_2_counts()
         self.drive_stop()
+        
 
 
