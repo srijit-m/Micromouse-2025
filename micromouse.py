@@ -14,10 +14,10 @@ import math
 import time
 
 #PID global constants
-K_P = 0.15
-K_D = 0
+K_P = 0.1
+K_D = 0.005
 #DT is in ms
-DT = 1 
+DT = 5
 
 DRIVE_BOOL = True
  
@@ -188,11 +188,11 @@ class Micromouse():
     
     def turn_right(self, power = 255):
         self.motor_2.spin_forward(power)
-        self.motor_1.spin_forward(power)
+        self.motor_1.spin_backward(256 - power)
     
     def turn_left(self, power = 255):
-        self.motor_2.spin_backward(power)
-        self.motor_1.spin_backward(power)
+        self.motor_2.spin_backward(256 - power)
+        self.motor_1.spin_forward(power)
 
 
     def drive_stop(self):
@@ -249,27 +249,32 @@ class Micromouse():
         DRIVE_BOOL = not DRIVE_BOOL
     
     def move_forward(self, distance):
-        #Use distance to find required encoder counts
-        #Distance is in cm
         self.encoder_1.reset()
         self.encoder_2.reset()
-        revs = distance/(math.pi*4.3)
-        required_counts = revs*1000
+        wheel_circumference = math.pi * 4.3  # cm
+        required_counts = distance / wheel_circumference * 1000
         rounded_counts = int(required_counts)
-        while DRIVE_BOOL == True:
+        last_time = time.ticks_ms()  # record start time
+
+        while DRIVE_BOOL:
+            if time.ticks_ms() - last_time < DT:
+                continue
+            else:
+                last_time = time.ticks_ms()
+
             enc1 = self.get_encoder_1_counts()
             enc2 = self.get_encoder_2_counts()
-            current = int((enc1 + enc2) / 2)
+            normalized_enc1 = enc1 * (1100 / 1000)  # scale motor1 to match motor2
+            current = (normalized_enc1 + enc2) / 2
 
             error = rounded_counts - current
             if error <= 5:
                 break
 
-            output = self.distance_PID.update(error)
-            output = max(95, min(200, int(output)))
-
+            # PD output
+            output = self.distance_PID.update(error)  # you can pass dt if you want derivative term
+            output = max(80, min(200, int(abs(output))))
             self.drive_forward(output)
-            time.sleep(DT)
 
         self.drive_stop()
 
@@ -284,8 +289,14 @@ class Micromouse():
             pass
         self.drive_stop()
     
-    def turn_left_90(self):
+    def turn_left_90(self, power):
         """A 90 degree left turn using encoders"""
         self.encoder_1.reset()
         self.encoder_1.reset()
+        goal_counts = 470
+        self.turn_left(power)
+        while (self.get_encoder_1_counts() < goal_counts):
+            pass
+        self.drive_stop()
+
 

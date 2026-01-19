@@ -79,7 +79,7 @@ class Motor():
             self.m2.duty_u16(limited_power * 257)
             self.m1.duty_u16(0)
         else:
-            self.m1.duty_u16(limited_power * 257)
+            self.m1.duty_u16(abs(limited_power) * 257)
             self.m2.duty_u16(0)
 
     def spin_stop(self):
