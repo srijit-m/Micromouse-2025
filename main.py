@@ -14,7 +14,10 @@ if __name__ == "__main__":
     
     mm.led_red_set(1)
     mm.led_green_set(0)
-    mm.move_forward(20, 120)
+    current_time = time.time()
+    while time.time() - current_time < 25:
+        time.sleep_us(1)
+        print(mm.get_encoder_1_counts())
     mm.led_red_set(0)
     mm.led_green_set(1)
     

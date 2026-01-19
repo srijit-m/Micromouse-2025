@@ -235,11 +235,19 @@ class Micromouse():
     def move_forward(self, distance, power = 255):
         #Use distance to find required encoder counts
         #Distance is in cm
+        self.encoder_1.reset()
+        self.encoder_2.reset()
         revs = distance/(math.pi*4.3)
         required_counts = revs*1000
         rounded_counts = math.ceil(required_counts)
         self.drive_forward(power)
-        while (self.get_encoder_1_counts()+self.get_encoder_2_counts())//2 < rounded_counts:
+        while self.get_encoder_1_counts() < rounded_counts:
             time.sleep_ms(10)
+            pass
         self.drive_stop()
+    
+    def turn_left_90(self):
+        """A 90 degree left turn using encoders"""
+        self.encoder_1.reset()
+        self.encoder_1.reset()
 
