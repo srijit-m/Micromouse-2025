@@ -9,9 +9,18 @@ License: MIT License
 from machine import Pin, Timer
 from motor import Motor
 from encoder import Encoder
+from pid import PID
 import math
 import time
 
+#PID global constants
+K_P = 0.12
+K_D = 0
+#DT is in ms
+DT = 1 
+
+DRIVE_BOOL = True
+ 
 class Micromouse():
     """
     Represents the physical Micromouse device in code.
@@ -43,6 +52,7 @@ class Micromouse():
 
         # Inputs
         self.button = Pin(11, Pin.IN)
+        self.button.irq(trigger = Pin.IRQ_FALLING, handler = self.button_handler)
         self.ir_1 = Pin(12, Pin.IN)
         self.ir_2 = Pin(13, Pin.IN)
         self.ir_3 = Pin(14, Pin.IN)
@@ -54,11 +64,14 @@ class Micromouse():
         self.motor_2 = Motor(17, 18, 15, 16)
         self.motor_1 = Motor(21, 20, 19, 22)
         self.motor_2.invert_motor()
+        self.motor_1.invert_motor()
         self.encoder_1 = Encoder(19, 22)
         self.encoder_2 = Encoder(15, 16)
+        self.distance_PID = PID(K_P, K_D, DT)
+
 
         # Other
-        self.blink_timer = Timer()
+        #self.blink_timer = Timer().init(1000/DT, mode=Timer.PERIODIC, callback= )
 
     def led_set(self, red_val, green_val):
         """
@@ -159,7 +172,6 @@ class Micromouse():
         Parameters:
             power (int): Optional speed to run motors at
         """
-        self.invert_motor_1()
         self.motor_2.spin_forward(power)
         self.motor_1.spin_forward(power)
         #Added this line to get the correct direction
@@ -171,7 +183,6 @@ class Micromouse():
         Parameters:
             power (int): Optional speed to run motors at
         """
-        self.invert_motor_1()
         self.motor_2.spin_backward(power)
         self.motor_1.spin_backward(power)
     
@@ -232,19 +243,45 @@ class Micromouse():
     def get_encoder_2_counts(self):
         return self.encoder_2.read()
     
-    def move_forward(self, distance, power = 255):
+    def button_handler(self, pin):
+        self.drive_stop()
+        global DRIVE_BOOL
+        DRIVE_BOOL = not DRIVE_BOOL
+    
+    def move_forward(self, distance):
         #Use distance to find required encoder counts
         #Distance is in cm
         self.encoder_1.reset()
         self.encoder_2.reset()
         revs = distance/(math.pi*4.3)
         required_counts = revs*1000
-        rounded_counts = math.ceil(required_counts)
-        self.drive_forward(power)
-        while self.get_encoder_1_counts() < rounded_counts:
-            time.sleep_ms(10)
-            pass
+        rounded_counts = int(required_counts)
+        error = rounded_counts
+        #Now need to find error value
+        output = self.distance_PID.update(error)
+        self.drive_forward(int(output))
+        while DRIVE_BOOL == True:
+            enc1 = self.get_encoder_1_counts()
+            enc2 = self.get_encoder_2_counts()
+            current_counts = int((enc1 + enc2) / 2)
+            error = rounded_counts - current_counts
+            if error <= 0:
+                break
+            output = self.distance_PID.update(error)
+            # Clamp motor power
+            output = max(80, min(255, int(output)))
+            self.drive_forward(output)
+            time.sleep(DT)
         self.drive_stop()
+
+
+
+
+    
+
+
+
+
     
     def turn_left_90(self):
         """A 90 degree left turn using encoders"""
