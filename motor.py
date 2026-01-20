@@ -7,8 +7,6 @@ Description: Provides a software abstraction for the system motors.
 License: MIT License
 """
 from machine import Pin, PWM
-from rotary_irq_rp2 import RotaryIRQ
-
 
 class Motor():
     """
@@ -19,20 +17,19 @@ class Motor():
         m2_pin (int): The pin number used to drive the motor backward.
         e1_pin (int): The pin number used for the forward leading encoder
             signal.
-        e1_pin (int): The pin number used for the forward lagging encoder
+        e2_pin (int): The pin number used for the forward lagging encoder
             signal.
     """
 
-    def __init__(self, m1_pin, m2_pin, e1_pin, e2_pin):
+    def __init__(self, m1_pin, m2_pin):
         """
         Initialises the member variables upon first creation.
         """
         self.m1 = PWM(Pin(m1_pin), freq = 2000)
-        self.m2 = PWM(Pin(m2_pin), freq = 2000)
-
-        self._encoder = RotaryIRQ(e1_pin, e2_pin)
+        self.m2 = PWM(Pin(m2_pin), freq=2000)
         self._invert = False
-    
+        self._enable = True
+
     def constrain(self, value, min_value, max_value):
         """
         Constrains a value to remain within a specified range
@@ -65,7 +62,7 @@ class Motor():
         """
         limited_power = self.constrain(power, 0, 255)
         self.spin_power(limited_power * -1)
-        
+
     def spin_power(self, power):
         """
         Runs the motor to a specified speed with a direction given between -255 and 255.
@@ -74,13 +71,31 @@ class Motor():
         Parameters:
             power (int): Desired power to run the motor at. [-255, 255]
         """
+        if not self._enable:
+            self.spin_stop()
+            return
+
+        # constrain input
         limited_power = self.constrain(power, -255, 255)
-        if (limited_power > 0) ^ self._invert:
-            self.m2.duty_u16(limited_power * 257)
-            self.m1.duty_u16(0)
-        else:
-            self.m1.duty_u16(abs(limited_power) * 257)
+
+        # apply inversion
+        if self._invert:
+            limited_power *= -1
+
+        # map to pwm
+        pwm_value = abs(limited_power) * 257  # 0-255 -> 0-65535
+
+        if limited_power > 0:
+            # forward
+            self.m1.duty_u16(pwm_value)
             self.m2.duty_u16(0)
+        elif limited_power < 0:
+            # backward
+            self.m1.duty_u16(0)
+            self.m2.duty_u16(pwm_value)
+        else:
+            # stop
+            self.spin_stop()
 
     def spin_stop(self):
         """
@@ -89,17 +104,14 @@ class Motor():
         self.m1.duty_u16(0)
         self.m2.duty_u16(0)
 
-    def encoder_read(self):
-        """
-        Reads the current encoder value.
-
-        Returns:
-            int: The rotational frequency of the motor (signed for direction).
-        """
-        return self._encoder.value()
-    
     def invert_motor(self):
         """
         Toggles the default direction for the motor
         """
         self._invert = not self._invert
+
+    def set_enable(self, enable=True):
+        self._enable = enable
+
+    def toggle_enable(self):
+        self._enable = not self._enable
