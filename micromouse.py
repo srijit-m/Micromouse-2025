@@ -8,9 +8,35 @@ License: MIT License
 """
 from machine import Pin, Timer
 from motor import Motor
-from encoder import Encoder
+from encoder_portable import Encoder
+from pid import PID
 import math
 import time
+
+WHEEL_DIAMETER = 44  # mm
+ENCODER_1_COUNTS_PER_REV = 4270
+ENCODER_2_COUNTS_PER_REV = 4270
+ENCODER_DIFF_PER_REV = 17680  # drifts about 3mm forward each 360 degrees turn
+
+MM_PER_REV = 3.14159 * WHEEL_DIAMETER
+
+DT = 0.005  # seconds
+
+# tested with dt = 0.005
+KP_DIST = 2.7
+KD_DIST = 0.2
+KP_ANGLE = 0.5
+KD_ANGLE = 0.03
+
+# in counts
+DIST_THRESHOLD = 75  # 2.5mm
+ANGLE_THRESHOLD = 100  # 2 degrees
+
+# min pwm that motors can move at (actually 90 but didn't work well with pid)
+MIN_PWM = 150
+MAX_PWM = 255
+
+running = True
 
 class Micromouse():
     """
@@ -43,6 +69,7 @@ class Micromouse():
 
         # Inputs
         self.button = Pin(11, Pin.IN)
+        self.button.irq(trigger = Pin.IRQ_FALLING, handler = self.button_handler)
         self.ir_1 = Pin(12, Pin.IN)
         self.ir_2 = Pin(13, Pin.IN)
         self.ir_3 = Pin(14, Pin.IN)
@@ -51,11 +78,13 @@ class Micromouse():
         self.green_led = Pin(10, Pin.OUT)
         self.red_led = Pin(9, Pin.OUT)
         self.debug_led = Pin(25, Pin.OUT)
-        self.motor_2 = Motor(17, 18, 15, 16)
-        self.motor_1 = Motor(21, 20, 19, 22)
-        self.motor_2.invert_motor()
-        self.encoder_1 = Encoder(19, 22)
-        self.encoder_2 = Encoder(15, 16)
+        self.motor_1 = Motor(21, 20)
+        self.motor_2 = Motor(17, 18)
+
+        self.encoder_1 = Encoder(22, 19)
+        self.encoder_2 = Encoder(8, 15)
+
+        self.controller = Controller()
 
         # Other
         self.blink_timer = Timer()
@@ -152,37 +181,17 @@ class Micromouse():
         elif index < 1:
             return (sensor_1, sensor_2, sensor_3)
 
-    def drive_forward(self, power = 255):
-        """
-        Turn both motors on to drive forward at full speed.
+    def drive(self, power=255):
+        self.motor_1.spin_power(power)
+        self.motor_2.spin_power(power)
 
-        Parameters:
-            power (int): Optional speed to run motors at
-        """
-        self.invert_motor_1()
+    def turn_right(self, power=255):
         self.motor_2.spin_forward(power)
-        self.motor_1.spin_forward(power)
-        #Added this line to get the correct direction
-
-    def drive_backward(self, power = 255):
-        """
-        Turn both motors on to drive backward at full speed.
-
-        Parameters:
-            power (int): Optional speed to run motors at
-        """
-        self.invert_motor_1()
-        self.motor_2.spin_backward(power)
-        self.motor_1.spin_backward(power)
-    
-    def turn_right(self, power = 255):
-        self.motor_2.spin_forward(power)
-        self.motor_1.spin_forward(power)
-    
-    def turn_left(self, power = 255):
-        self.motor_2.spin_backward(power)
         self.motor_1.spin_backward(power)
 
+    def turn_left(self, power=255):
+        self.motor_2.spin_backward(power)
+        self.motor_1.spin_forward(power)
 
     def drive_stop(self):
         """
@@ -191,18 +200,6 @@ class Micromouse():
         self.motor_2.spin_stop()
         self.motor_1.spin_stop()
 
-    def get_encoders(self):
-        """
-        Get the rotational frequency of both motor encoders, signed for
-            direction.
-
-        Returns:
-            (int, int): Encoder 1, and encoder 2 reading respectively
-        """
-        encoder_2 = self.motor_2.encoder_read()
-        encoder_1 = self.motor_1.encoder_read()
-        return (encoder_2, encoder_1)
-    
     def get_button(self):
         """
         Gets the value of the built-in button
@@ -211,13 +208,13 @@ class Micromouse():
             (bool): True if button is pressed
         """
         return self.button.value() < 1
-    
+
     def invert_motor_1(self):
         """
         Toggles the invert direction of motor 1
         """
         self.motor_1.invert_motor()
-    
+
     def invert_motor_2(self):
         """
         Toggles the invert direction of motor 2
@@ -226,28 +223,151 @@ class Micromouse():
 
     """These functions have been added by me due to the faulty encoders"""
 
-    def get_encoder_1_counts(self):
-        return self.encoder_1.read()
-
-    def get_encoder_2_counts(self):
-        return self.encoder_2.read()
-    
-    def move_forward(self, distance, power = 255):
-        #Use distance to find required encoder counts
-        #Distance is in cm
+    def reset_encoders(self):
         self.encoder_1.reset()
         self.encoder_2.reset()
-        revs = distance/(math.pi*4.3)
-        required_counts = revs*1000
-        rounded_counts = math.ceil(required_counts)
-        self.drive_forward(power)
-        while self.get_encoder_1_counts() < rounded_counts:
-            time.sleep_ms(10)
+
+    def encoder_1_counts(self):
+        return self.encoder_1.read()
+
+    def encoder_2_counts(self):
+        return self.encoder_2.read()
+
+    def encoder_1_distance(self):
+        """Return linear distance (mm) travelled by motor 1 as measured by encoder"""
+        revolutions = self.encoder_1_counts() / ENCODER_1_COUNTS_PER_REV
+        return revolutions * MM_PER_REV
+
+    def encoder_2_distance(self):
+        """Return linear distance (mm) travelled by motor 2 as measured by encoder"""
+        revolutions = self.encoder_2_counts() / ENCODER_2_COUNTS_PER_REV
+        return revolutions * MM_PER_REV
+
+    def button_handler(self, pin):
+        global running
+        running = False
+        self.drive_stop()
+        self.motor_1.toggle_enable()
+        self.motor_2.toggle_enable()
+
+    def move(self, distance):
+        self.reset_encoders()
+        self.controller.reset()
+
+        self.controller.set_goal_distance(distance)
+        self.controller.set_goal_angle(0)
+
+        self.update_motors()
+
+    def turn(self, angle):
+        self.reset_encoders()
+        self.controller.reset()
+
+        self.controller.set_goal_distance(0)
+        self.controller.set_goal_angle(angle)
+
+        self.update_motors()
+
+    def update_motors(self):
+        """Run PID control loop on motors until the mouse is at the goal"""
+        last = time.ticks_us()
+        while running:
+            now = time.ticks_us()
+            dt = (time.ticks_diff(now, last)) / 1_000_000  # seconds
+            if dt >= 0.01:  # 10 ms
+                last = now
+
+                enc1 = self.encoder_1_counts()
+                enc2 = self.encoder_2_counts()
+
+                # print(f"{enc1=}, {enc2=}")
+
+                pwm_1, pwm_2 = self.controller.update(enc1, enc2, dt)
+
+                self.motor_1.spin_power(pwm_1)
+                self.motor_2.spin_power(pwm_2)
+                self.motor_1_speed = pwm_1
+                self.motor_2_speed = pwm_2
+
+            if self.controller.at_goal():
+                break
+
+        self.drive_stop()
+
+    def move_forward_encoders(self, distance):
+        self.reset_encoders()
+        revs = distance / (math.pi * WHEEL_DIAMETER)
+        required_counts = revs * ENCODER_1_COUNTS_PER_REV
+        rounded_counts = int(required_counts)
+        self.drive(255)
+        while abs(self.encoder_1_counts()) < rounded_counts:
+            # print(f"{self.encoder_1_counts()}")
             pass
         self.drive_stop()
-    
-    def turn_left_90(self):
-        """A 90 degree left turn using encoders"""
-        self.encoder_1.reset()
-        self.encoder_1.reset()
 
+    def turn_left_encoders(self, power):
+        """A 90 degree left turn using encoders"""
+        self.reset_encoders()
+        difference = 0
+        goal_difference = 985
+        self.turn_left(power)
+        while (difference < goal_difference):
+            difference = self.encoder_1_counts() - self.encoder_2_counts()
+        self.drive_stop()
+
+
+class Controller:
+    def __init__(self) -> None:
+        self._distance_controller = PID(KP_DIST, KD_DIST)
+        self._angle_controller = PID(KP_ANGLE, KD_ANGLE)
+
+        self._goal_counts = 0
+        self._goal_difference = 0
+
+        self._at_goal = False
+
+    def set_goal_distance(self, distance_mm):
+        revolutions = distance_mm / MM_PER_REV
+        self._goal_counts = int(revolutions * ENCODER_1_COUNTS_PER_REV)
+
+    def set_goal_angle(self, angle_degrees):
+        self._goal_difference = int(angle_degrees / 360 * ENCODER_DIFF_PER_REV)
+
+    def at_goal(self):
+        return self._at_goal
+
+    def apply_deadband(self, value, min_pwm=MIN_PWM):
+        if value > 0:
+            return max(value, min_pwm)
+        elif value < 0:
+            return min(value, -min_pwm)
+        return 0
+
+    def update(self, encoder_1, encoder_2, dt) -> tuple[int, int]:
+        dist_error = self._goal_counts - (encoder_1 + encoder_2) / 2
+        angle_error = self._goal_difference - (encoder_2 - encoder_1)
+
+        self._at_goal = (
+            abs(dist_error) < DIST_THRESHOLD and abs(angle_error) < ANGLE_THRESHOLD
+        )
+
+        forward = self._distance_controller.update(dist_error, dt)
+        turn = self._angle_controller.update(angle_error, dt)
+
+        left = int(forward - turn)
+        right = int(forward + turn)
+
+        left = self.apply_deadband(left)
+        right = self.apply_deadband(right)
+
+        left = max(-MAX_PWM, min(MAX_PWM, left))
+        right = max(-MAX_PWM, min(MAX_PWM, right))
+
+        return left, right
+
+    def reset(self):
+        self._distance_controller.reset()
+        self._angle_controller.reset()
+        self._goal_counts = 0
+        self._goal_difference = 0
+        self._at_goal = False
