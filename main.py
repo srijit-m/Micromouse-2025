@@ -1,13 +1,12 @@
-"""
-This file is provided as a sample of basic initialisation and working for
-"plug-and-play" of the drivers, but is expected to be altered to implement
-system control algorithms.
-"""
 from micromouse import Micromouse
+from maze import Maze
 from machine import Pin, Timer
 import utime
 
-mm = Micromouse()
+# maze config
+MAZE_WIDTH = 9
+MAZE_HEIGHT = 9
+MAZE_GOAL = (4, 4)
 
 # modes
 IDLE = 0
@@ -18,6 +17,7 @@ SPEEDRUN = 2
 EXPLORE_DT = 0
 SPEEDRUN_DT = 1000
 
+mm = Micromouse()
 
 def select_mode():
     mm.led_green_set(0)
@@ -55,6 +55,8 @@ def select_mode():
 
 
 if __name__ == "__main__":
+    maze = Maze(MAZE_WIDTH, MAZE_HEIGHT, MAZE_GOAL)
+
     mode = select_mode()
 
     if mode == EXPLORE:

@@ -1,17 +1,13 @@
-"""
-Filename: micromouse.py
-Author: Quinn Horton, UQ Mechatronics and Robotics Society
-Date: 03/01/2025
-Version: 0.5
-Description: Provides a software abstraction for the Micromouse robot.
-License: MIT License
-"""
 from machine import Pin, Timer
 from motor import Motor
 from encoder_portable import Encoder
 from pid import PID
+from maze import NORTH, EAST, SOUTH, WEST
 import math
 import utime
+
+START_POS = (0, 0)
+START_HEADING = NORTH
 
 WHEEL_DIAMETER = 44  # mm
 ENCODER_1_COUNTS_PER_REV = 4280
@@ -67,6 +63,9 @@ class Micromouse():
             return
         self.exists = True
 
+        self.position = START_POS
+        self.heading = START_HEADING
+
         # Inputs
         self.button = Pin(11, Pin.IN, Pin.PULL_UP)
         self.ir_1 = Pin(12, Pin.IN)
@@ -87,6 +86,12 @@ class Micromouse():
 
         # Other
         self.blink_timer = Timer()
+
+    def get_position(self):
+        return self.position
+
+    def get_heading(self):
+        return self.heading
 
     def led_set(self, red_val, green_val):
         """
