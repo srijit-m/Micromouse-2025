@@ -5,24 +5,91 @@ system control algorithms.
 """
 from micromouse import Micromouse
 from machine import Pin, Timer
-import time
+import utime
 
 mm = Micromouse()
 
+# modes
+IDLE = 0
+EXPLORE = 1
+SPEEDRUN = 2
+
+# button times
+EXPLORE_DT = 0
+SPEEDRUN_DT = 1000
+
+
+def select_mode():
+    mm.led_green_set(0)
+    mm.led_blink_red(2)
+
+    # wait for press
+    while mm.button.value():
+        utime.sleep_ms(5)
+
+    t0 = utime.ticks_ms()
+    mode = IDLE
+
+    mm.led_blink_stop()
+
+    while not mm.button.value():
+        dt = utime.ticks_diff(utime.ticks_ms(), t0)
+
+        if dt >= SPEEDRUN_DT:
+            mm.led_green_set(1)
+            mm.led_red_set(0)
+            mode = SPEEDRUN
+        elif dt >= EXPLORE_DT:
+            mm.led_green_set(0)
+            mm.led_red_set(1)
+            mode = EXPLORE
+        else:
+            mm.led_green_set(0)
+            mm.led_red_set(0)
+
+        utime.sleep_ms(10)
+
+    mm.led_green_set(0)
+    mm.led_red_set(0)
+    return mode
+
 
 if __name__ == "__main__":
-    mm.led_red_set(1)
-    mm.led_green_set(0)
+    mode = select_mode()
 
-    while True:
-        # mm.move_forward(180)
-        # time.sleep_ms(200)
-        mm.turn(90)
-        time.sleep_ms(250)
+    if mode == EXPLORE:
+        pass
+    elif mode == SPEEDRUN:
+        pass
+
+    # main code after here
+
+    # while True:
+    #     # mm.move_forward(180)
+    #     # sleep_ms(200)
+    #     for _ in range(8):
+    #         mm.turn(90, 0.5)
+    #         sleep_ms(250)
+
+    #     for _ in range(8):
+    #         mm.turn(-90, 0.5)
+    #         sleep_ms(250)
+
+    # back up
+    mm.drive(-150)
+    utime.sleep_ms(350)
+    mm.drive_stop()
+    utime.sleep_ms(250)
+
+    # for _ in range(5):
+    #     mm.move(180)
+    #     utime.sleep_ms(200)
+
+    mm.move(900)
 
     # mm.move_forward_encoders(1000)
 
-    # # time.sleep(0.5)
+    # # utime.sleep_ms(500)
 
     # # mm.move_forward(-138)
     # mm.turn(360)
@@ -31,10 +98,10 @@ if __name__ == "__main__":
 
     # #### TEST ENCODERS
     # mm.reset_encoders()
-    # time.sleep(1)
+    # utime.sleep_ms(1000)
     # mm.led_red_set(1)
 
-    # time.sleep(15)
+    # utime.sleep_ms(15000)
 
     # e1 = mm.encoder_1_counts()
     # e2 = mm.encoder_2_counts()
@@ -44,5 +111,5 @@ if __name__ == "__main__":
     # print(f"{d1=}, {d2=}")
     # ####
 
-    mm.led_green_set(1)
-    mm.led_red_set(0)
+    mm.led_green_set(0)
+    mm.led_red_set(1)

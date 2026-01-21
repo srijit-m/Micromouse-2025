@@ -11,12 +11,14 @@ from motor import Motor
 from encoder_portable import Encoder
 from pid import PID
 import math
-import time
+import utime
 
 WHEEL_DIAMETER = 44  # mm
-ENCODER_1_COUNTS_PER_REV = 4270
-ENCODER_2_COUNTS_PER_REV = 4270
-ENCODER_DIFF_PER_REV = 17680  # drifts about 3mm forward each 360 degrees turn
+ENCODER_1_COUNTS_PER_REV = 4280
+ENCODER_2_COUNTS_PER_REV = 4280
+ENCODER_DIFF_PER_REV = 17825  # drifts about 3mm forward each 360 degrees turn
+
+LEFT_TURN_CORRECTION = 1.004
 
 MM_PER_REV = 3.14159 * WHEEL_DIAMETER
 
@@ -24,7 +26,7 @@ PID_DT = 0.01  # seconds
 
 # tested with dt = 0.01
 KP_DIST = 2.7
-KD_DIST = 0.2
+KD_DIST = 0.25
 KP_ANGLE = 0.5
 KD_ANGLE = 0.03
 
@@ -35,8 +37,6 @@ ANGLE_THRESHOLD = 100  # 2 degrees
 # min pwm that motors can move at (actually 90 but didn't work well with pid)
 MIN_PWM = 150
 MAX_PWM = 255
-
-running = True
 
 class Micromouse():
     """
@@ -68,8 +68,7 @@ class Micromouse():
         self.exists = True
 
         # Inputs
-        self.button = Pin(11, Pin.IN)
-        self.button.irq(trigger = Pin.IRQ_FALLING, handler = self.button_handler)
+        self.button = Pin(11, Pin.IN, Pin.PULL_UP)
         self.ir_1 = Pin(12, Pin.IN)
         self.ir_2 = Pin(13, Pin.IN)
         self.ir_3 = Pin(14, Pin.IN)
@@ -134,7 +133,13 @@ class Micromouse():
         self.green_led.toggle()
         self.red_led.toggle()
 
-    def led_toggle_start(self, frequency=1):
+    def led_toggle_red(self):
+        self.red_led.toggle()
+
+    def led_toggle_green(self):
+        self.green_led.toggle()
+
+    def led_blink_start(self, frequency=1):
         """
         Initialise an LED blinking timer for the red and green LEDs.
 
@@ -142,16 +147,33 @@ class Micromouse():
             frequency (int, optional): The frequency at which the LEDs should
                 blink.
         """
+        self.blink_timer.deinit()
         self.blink_timer.init(mode=Timer.PERIODIC, freq=frequency,
                               callback=lambda t: self.led_toggle())
 
-    def led_toggle_stop(self):
+    def led_blink_stop(self):
         """
         Stop the blinking of the onboard red and green LEDs and turn them off.
         """
         self.blink_timer.deinit()
         self.red_led.off()
         self.green_led.off()
+
+    def led_blink_red(self, frequency=1):
+        self.blink_timer.deinit()
+        self.blink_timer.init(
+            mode=Timer.PERIODIC,
+            freq=frequency,
+            callback=lambda t: self.led_toggle_red(),
+        )
+
+    def led_blink_green(self, frequency=1):
+        self.blink_timer.deinit()
+        self.blink_timer.init(
+            mode=Timer.PERIODIC,
+            freq=frequency,
+            callback=lambda t: self.led_toggle_green(),
+        )
 
     def get_ir_values(self, index=0):
         """
@@ -243,37 +265,30 @@ class Micromouse():
         revolutions = self.encoder_2_counts() / ENCODER_2_COUNTS_PER_REV
         return revolutions * MM_PER_REV
 
-    def button_handler(self, pin):
-        global running
-        running = False
-        self.drive_stop()
-        self.motor_1.toggle_enable()
-        self.motor_2.toggle_enable()
-
-    def move(self, distance):
+    def move(self, distance, speed=1.0):
         self.reset_encoders()
         self.controller.reset()
 
         self.controller.set_goal_distance(distance)
         self.controller.set_goal_angle(0)
 
-        self.update_motors()
+        self.update_motors(speed)
 
-    def turn(self, angle):
+    def turn(self, angle, speed=1.0):
         self.reset_encoders()
         self.controller.reset()
 
         self.controller.set_goal_distance(0)
         self.controller.set_goal_angle(angle)
 
-        self.update_motors()
+        self.update_motors(speed)
 
-    def update_motors(self):
+    def update_motors(self, speed=1.0):
         """Run PID control loop on motors until the mouse is at the goal"""
-        last = time.ticks_us()
-        while running:
-            now = time.ticks_us()
-            dt = (time.ticks_diff(now, last)) / 1_000_000  # seconds
+        last = utime.ticks_us()
+        while True:
+            now = utime.ticks_us()
+            dt = (utime.ticks_diff(now, last)) / 1_000_000  # seconds
             if dt >= PID_DT:
                 last = now
 
@@ -284,10 +299,8 @@ class Micromouse():
 
                 pwm_1, pwm_2 = self.controller.update(enc1, enc2, dt)
 
-                self.motor_1.spin_power(pwm_1)
-                self.motor_2.spin_power(pwm_2)
-                self.motor_1_speed = pwm_1
-                self.motor_2_speed = pwm_2
+                self.motor_1.spin_power(int(pwm_1 * speed))
+                self.motor_2.spin_power(int(pwm_2 * speed))
 
             if self.controller.at_goal():
                 break
@@ -315,6 +328,12 @@ class Micromouse():
             difference = self.encoder_1_counts() - self.encoder_2_counts()
         self.drive_stop()
 
+    def back_up(self, speed=255):
+        """Drive the mouse backwards to align with the wall. Uses the encoders
+        to tell when wall has been reached."""
+        # self.drive(-speed)
+        # TODO
+
 
 class Controller:
     def __init__(self) -> None:
@@ -331,6 +350,8 @@ class Controller:
         self._goal_counts = int(revolutions * ENCODER_1_COUNTS_PER_REV)
 
     def set_goal_angle(self, angle_degrees):
+        if angle_degrees < 0:
+            angle_degrees *= LEFT_TURN_CORRECTION
         self._goal_difference = int(angle_degrees / 360 * ENCODER_DIFF_PER_REV)
 
     def at_goal(self):
