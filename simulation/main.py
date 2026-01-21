@@ -1,138 +1,140 @@
 import API
 import sys
 from collections import deque
-from enum import Enum, IntEnum
 import time
 
-Position = tuple[int, int]
+# WALL STATES
+KNOWN_EMPTY = 0
+KNOWN_WALL = 1
+UNKNOWN_WALL = 2
+
+# DIRECTIONS
+NORTH = 0
+EAST = 1
+SOUTH = 2
+WEST = 3
+DIRECTIONS = (NORTH, EAST, SOUTH, WEST)
+
+# MOVES
+FORWARD = 0
+TURN_LEFT = 1
+TURN_RIGHT = 2
+TURN_AROUND = 3
 
 
-class WallState(IntEnum):
-    EMPTY = 0
-    WALL = 1
-    UNKNOWN = 2
+def step(position, direction):
+    x, y = position
+
+    if direction == NORTH:
+        dx, dy = (0, 1)
+    elif direction == EAST:
+        dx, dy = (1, 0)
+    elif direction == SOUTH:
+        dx, dy = (0, -1)
+    elif direction == WEST:
+        dx, dy = (-1, 0)
+    else:
+        dx = dy = 0
+
+    return x + dx, y + dy
 
 
-class Direction(Enum):
-    # direction deltas (dx, dy)
-    NORTH = (0, 1)
-    EAST = (1, 0)
-    SOUTH = (0, -1)
-    WEST = (-1, 0)
-
-    @property
-    def dx(self) -> int:
-        return self.value[0]
-
-    @property
-    def dy(self) -> int:
-        return self.value[1]
-
-    @property
-    def left(self):
-        return Direction((-self.dy, self.dx))
-
-    @property
-    def right(self):
-        return Direction((self.dy, -self.dx))
-
-    @property
-    def behind(self):
-        return Direction((-self.dx, -self.dy))
+def left(direction):
+    return (direction - 1) % 4
 
 
-class Move(Enum):
-    FORWARD = 0
-    TURN_LEFT = 1
-    TURN_RIGHT = 2
-    TURN_AROUND = 3
+def right(direction):
+    return (direction + 1) % 4
+
+
+def behind(direction):
+    return (direction + 2) % 4
 
 
 class Mouse:
 
-    def __init__(self, start_pos: Position, start_dir: Direction) -> None:
+    def __init__(self, start_pos, start_dir):
         self._start_pos = start_pos
         self._start_dir = start_dir
         self._position = start_pos
         self._direction = start_dir
 
     @property
-    def start_position(self) -> Position:
+    def start_position(self):
         return self._start_pos
 
     @property
-    def start_direction(self) -> Direction:
+    def start_direction(self):
         return self._start_dir
 
     @property
-    def position(self) -> Position:
+    def position(self):
         return self._position
 
     @property
-    def direction(self) -> Direction:
+    def direction(self):
         return self._direction
 
-    def reset(self) -> None:
+    def reset(self):
         self._position = self._start_pos
         self._direction = self._start_dir
 
-    def turn_left(self) -> None:
-        self._direction = self._direction.left
+    def turn_left(self):
+        self._direction = left(self._direction)
 
-    def turn_right(self) -> None:
-        self._direction = self._direction.right
+    def turn_right(self):
+        self._direction = right(self._direction)
 
-    def turn_around(self) -> None:
-        self._direction = self._direction.behind
+    def turn_around(self):
+        self._direction = behind(self._direction)
 
-    def move_forward(self) -> None:
+    def move_forward(self):
         self._position = step(self._position, self._direction)
 
 
 class Maze:
-    def __init__(self, width: int, height: int) -> None:
+
+    def __init__(self, width, height):
         self._width = width
         self._height = height
         self._goal = (width // 2, height // 2)  # assume odd maze size for simplicity
 
         # initialise empty walls and distances
-        self._h_walls = [[WallState.UNKNOWN] * (height + 1) for _ in range(width)]
-        self._v_walls = [[WallState.UNKNOWN] * height for _ in range(width + 1)]
+        self._h_walls = [[UNKNOWN_WALL] * (height + 1) for _ in range(width)]
+        self._v_walls = [[UNKNOWN_WALL] * height for _ in range(width + 1)]
         self._dists = [[-1] * height for _ in range(width)]
 
     @property
-    def width(self) -> int:
+    def width(self):
         return self._width
 
     @property
-    def height(self) -> int:
+    def height(self):
         return self._height
 
     @property
-    def goal(self) -> Position:
+    def goal(self):
         return self._goal
 
     @goal.setter
-    def goal(self, position: Position) -> None:
+    def goal(self, position):
         self._goal = position
 
     @property
-    def dists(self) -> list[list[int]]:
+    def dists(self):
         return self._dists
 
     @dists.setter
-    def dists(self, dists) -> None:
+    def dists(self, dists):
         self._dists = dists
 
-    def get_dist(self, position: Position) -> int:
+    def get_dist(self, position):
         return self._dists[position[0]][position[1]]
 
-    def set_dist(self, position: Position, dist: int) -> None:
+    def set_dist(self, position, dist):
         self._dists[position[0]][position[1]] = dist
 
-    def get_wall(
-        self, position: Position, direction: Direction
-    ) -> tuple[list[list[WallState]], int, int]:
+    def get_wall(self, position, direction):
         """Returns the appropriate wall matrix and the indices for the wall
         adjacent to the specified position
 
@@ -141,53 +143,49 @@ class Maze:
             walls[x_idx][y_idx]
         """
         x, y = position
-        if direction == Direction.NORTH:
+        if direction == NORTH:
             return self._h_walls, x, y + 1
-        if direction == Direction.EAST:
+        if direction == EAST:
             return self._v_walls, x + 1, y
-        if direction == Direction.SOUTH:
+        if direction == SOUTH:
             return self._h_walls, x, y
-        if direction == Direction.WEST:
+        if direction == WEST:
             return self._v_walls, x, y
         return None
 
-    def within_bounds(self, position: Position) -> bool:
+    def within_bounds(self, position):
         """Return whether the position is within the bounds of the maze"""
         x, y = position
         return 0 <= x < self.width and 0 <= y < self.height
 
-    def update_wall(
-        self, position: Position, direction: Direction, state: WallState
-    ) -> bool:
+    def update_wall(self, position, direction, state):
         """Update the state of a wall if it is unknown and return whether the wall state changed."""
         if not self.within_bounds(position):
             return False
 
         walls, x, y = self.get_wall(position, direction)
 
-        if walls[x][y] != WallState.UNKNOWN:
+        if walls[x][y] != UNKNOWN_WALL:
             return False
 
         walls[x][y] = state
         return True
 
-    def is_wall(
-        self, position: Position, direction: Direction, assume_wall=False
-    ) -> bool:
+    def is_wall(self, position, direction, assume_wall=False):
         if self.within_bounds(position):
             walls, x, y = self.get_wall(position, direction)
-            if walls[x][y] == WallState.UNKNOWN:
+            if walls[x][y] == UNKNOWN_WALL:
                 return assume_wall
-            return walls[x][y] == WallState.WALL
+            return walls[x][y] == KNOWN_WALL
         return False
 
-    def floodfill(self, goal: Position, require_valid_path=False) -> None:
+    def floodfill(self, goal, require_valid_path=False):
         self._dists = [[-1] * self._height for _ in range(self._width)]
         self.set_dist(goal, 0)
         q = deque([goal])
         while q:
             position = q.popleft()
-            for direction in Direction:
+            for direction in DIRECTIONS:
                 neighbour = step(position, direction)
                 if (
                     self.within_bounds(neighbour)
@@ -199,17 +197,17 @@ class Maze:
                     self.set_dist(neighbour, self.get_dist(position) + 1)
                     q.append(neighbour)
 
-    def next_direction(self, position: Position, heading: Direction) -> Direction:
-        """Returns the direction to move, based on the current position and direction.
+    def next_direction(self, position, heading):
+        """Returns the direction to move, based on the current position and
 
         When multiple neighbouring cells have the same distance from the goal,
         the order of precedence is: forward, left, right, backward.
         """
         directions = (
             heading,
-            heading.left,
-            heading.right,
-            heading.behind,
+            left(heading),
+            right(heading),
+            behind(heading),
         )
 
         x, y = position
@@ -227,27 +225,21 @@ class Maze:
         return heading
 
 
-def step(pos: Position, dir: Direction) -> Position:
-    return pos[0] + dir.dx, pos[1] + dir.dy
-
-
-def next_move(direction: Direction, target: Direction) -> Move:
+def next_move(direction, target):
     """Returns the required move to make based on the current direction and
     the target direction"""
-    # for simplicity, take advantage of the fact that the Direction enum is ordered clockwise
-    dirs = list(Direction)
-    offset = (dirs.index(target) - dirs.index(direction)) % len(dirs)
+    offset = (target - direction) % 4
 
     if offset == 0:
-        return Move.FORWARD
+        return FORWARD
     if offset == 1:
-        return Move.TURN_RIGHT
+        return TURN_RIGHT
     if offset == 2:
-        return Move.TURN_AROUND
-    return Move.TURN_LEFT  # offset == 3
+        return TURN_AROUND
+    return TURN_LEFT  # offset == 3
 
 
-def update_walls(maze: Maze, mouse: Mouse) -> bool:
+def update_walls(maze, mouse):
     """Update the known walls in the maze at the mouse's current position.
 
     Returns:
@@ -257,17 +249,17 @@ def update_walls(maze: Maze, mouse: Mouse) -> bool:
     direction = mouse.direction
     updated = False
 
-    front_wall_state = WallState.WALL if API.wallFront() else WallState.EMPTY
-    left_wall_state = WallState.WALL if API.wallLeft() else WallState.EMPTY
-    right_wall_state = WallState.WALL if API.wallRight() else WallState.EMPTY
+    front_wall_state = KNOWN_WALL if API.wallFront() else KNOWN_EMPTY
+    left_wall_state = KNOWN_WALL if API.wallLeft() else KNOWN_EMPTY
+    right_wall_state = KNOWN_WALL if API.wallRight() else KNOWN_EMPTY
 
     updated |= maze.update_wall(position, direction, front_wall_state)
-    updated |= maze.update_wall(position, direction.left, left_wall_state)
-    updated |= maze.update_wall(position, direction.right, right_wall_state)
+    updated |= maze.update_wall(position, left(direction), left_wall_state)
+    updated |= maze.update_wall(position, right(direction), right_wall_state)
     return updated
 
 
-def extract_path(maze: Maze, mouse: Mouse, require_valid_path=True) -> list[Direction]:
+def extract_path(maze, mouse, require_valid_path=True):
     """Extract the shortest path as a list of directions from start to goal"""
     maze.floodfill(maze.goal, require_valid_path)
 
@@ -279,13 +271,13 @@ def extract_path(maze: Maze, mouse: Mouse, require_valid_path=True) -> list[Dire
         next_dir = maze.next_direction(position, direction)
         path.append(next_dir)
 
-        position = (position[0] + next_dir.dx, position[1] + next_dir.dy)
+        position = step(position, next_dir)
         direction = next_dir
 
     return path
 
 
-def compress_path(path: list[Direction]) -> list[tuple[Direction, int]]:
+def compress_path(path):
     """Compress repeated directions in a path into (direction, count) tuples"""
     compressed = []
     last_dir = path[0]
@@ -303,35 +295,34 @@ def compress_path(path: list[Direction]) -> list[tuple[Direction, int]]:
     return compressed
 
 
-def path_to_moves(
-    path: list[tuple[Direction, int]], start_dir: Direction
-) -> list[tuple[Move, int]]:
+def path_to_moves(path, start_dir):
     moves = []
     prev_dir = start_dir
     for direction, count in path:
         move = next_move(prev_dir, direction)
-        if move != Move.FORWARD:
+        if move != FORWARD:
             moves.append((move, 1))
-        moves.append((Move.FORWARD, count))
+        moves.append((FORWARD, count))
         prev_dir = direction
     return moves
 
-def display_walls(maze: Maze, mouse: Mouse) -> None:
+
+def display_walls(maze, mouse):
     """Display the walls at the mouse's current position"""
-    for direction in Direction:
+    for direction in DIRECTIONS:
         if maze.is_wall(mouse.position, direction):
             x, y = mouse.position
-            if direction == Direction.NORTH:
+            if direction == NORTH:
                 API.setWall(x, y, "n")
-            elif direction == Direction.EAST:
+            elif direction == EAST:
                 API.setWall(x, y, "e")
-            elif direction == Direction.SOUTH:
+            elif direction == SOUTH:
                 API.setWall(x, y, "s")
-            elif direction == Direction.WEST:
+            elif direction == WEST:
                 API.setWall(x, y, "w")
 
 
-def display_dists(maze: Maze) -> None:
+def display_dists(maze):
     for x in range(maze.width):
         for y in range(maze.height):
             dist = maze.get_dist((x, y))
@@ -339,52 +330,52 @@ def display_dists(maze: Maze) -> None:
                 API.setText(x, y, dist)
 
 
-def move_forward(mouse: Mouse):
+def move_forward(mouse):
     mouse.move_forward()
     API.moveForward()
 
 
-def turn_right(mouse: Mouse):
+def turn_right(mouse):
     mouse.turn_right()
     API.turnRight()
 
 
-def turn_around(mouse: Mouse):
+def turn_around(mouse):
     mouse.turn_around()
     API.turnRight()
     API.turnRight()
 
 
-def turn_left(mouse: Mouse):
+def turn_left(mouse):
     mouse.turn_left()
     API.turnLeft()
 
 
-def turn_to_face(mouse: Mouse, direction: Direction) -> None:
-    if direction == mouse.direction.right:
+def turn_to_face(mouse, direction):
+    if direction == right(mouse.direction):
         mouse.turn_right()
         API.turnRight()
-    elif direction == mouse.direction.behind:
+    elif direction == behind(mouse.direction):
         mouse.turn_around()
         API.turnRight()
         API.turnRight()
-    elif direction == mouse.direction.left:
+    elif direction == left(mouse.direction):
         mouse.turn_left()
         API.turnLeft()
 
 
-def move_mouse(mouse: Mouse, move: Move) -> None:
-    if move == Move.FORWARD:
+def move_mouse(mouse, move):
+    if move == FORWARD:
         move_forward(mouse)
-    elif move == Move.TURN_RIGHT:
+    elif move == TURN_RIGHT:
         turn_right(mouse)
-    elif move == Move.TURN_AROUND:
+    elif move == TURN_AROUND:
         turn_around(mouse)
-    elif move == Move.TURN_LEFT:
+    elif move == TURN_LEFT:
         turn_left(mouse)
 
 
-def search_to(maze: Maze, mouse: Mouse, goal: Position):
+def search_to(maze, mouse, goal):
     """Move to the target position at a safe speed while mapping the maze."""
 
     while mouse.position != goal:
@@ -403,7 +394,7 @@ def search_to(maze: Maze, mouse: Mouse, goal: Position):
         move_mouse(mouse, move)
 
 
-def search_maze(maze: Maze, mouse: Mouse):
+def search_maze(maze, mouse):
     """Search to the goal, then search back to the start.
 
     Assumes that the mouse is at the start position and orientation.
@@ -413,11 +404,11 @@ def search_maze(maze: Maze, mouse: Mouse):
     turn_to_face(mouse, mouse.start_direction)
 
 
-def speed_run(moves: list[tuple[Move, int]]):
+def speed_run(moves):
     pass
 
 
-def log(string) -> None:
+def log(string):
     sys.stderr.write("{}\n".format(string))
     sys.stderr.flush()
 
@@ -425,7 +416,7 @@ def log(string) -> None:
 WIDTH = API.mazeWidth()
 HEIGHT = API.mazeHeight()
 START = (0, 0)
-HEADING = Direction.NORTH
+HEADING = NORTH
 
 def main():
     maze = Maze(WIDTH, HEIGHT)
