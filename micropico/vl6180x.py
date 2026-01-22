@@ -31,6 +31,8 @@ _VL6180X_REG_RESULT_ALS_VAL = const(0x050)
 _VL6180X_REG_RESULT_HISTORY_BUFFER_0 = const(0x052)
 _VL6180X_REG_RESULT_RANGE_VAL = const(0x062)
 
+_VL6180X_REG_I2C_SLAVE_DEVICE_ADDRESS = const(0x212)
+
 # Internal constants:
 _VL6180X_DEFAULT_I2C_ADDR = const(0x29)
 
@@ -75,8 +77,9 @@ class VL6180X:
         self._address = address
         if self._read_8(_VL6180X_REG_IDENTIFICATION_MODEL_ID) != 0xB4:
             raise RuntimeError("Could not find VL6180X, is it connected and powered?")
-        self._load_settings()
-        self._write_8(_VL6180X_REG_SYSTEM_FRESH_OUT_OF_RESET, 0x00)
+        if self._read_8(_VL6180X_REG_SYSTEM_FRESH_OUT_OF_RESET) == 0x01:
+            self._load_settings()
+            self._write_8(_VL6180X_REG_SYSTEM_FRESH_OUT_OF_RESET, 0x00)
         self.offset = offset
 
         # Reset a sensor that crashed while in continuous mode
@@ -169,19 +172,25 @@ class VL6180X:
         self._write_8(_VL6180X_REG_SYSRANGE_PART_TO_PART_RANGE_OFFSET, struct.pack("b", offset)[0])
         self._offset = offset
 
-    def _read_range_single(self):
-        """Read the range when in single-shot mode"""
+    def _read_range_single(self, timeout=500):
+        """Read the range when in single-shot mode. Returns -1 on timeout."""
+        start = utime.ticks_ms()
+
         while not self._read_8(_VL6180X_REG_RESULT_RANGE_STATUS) & 0x01:
-            pass
+            if utime.ticks_diff(utime.ticks_ms(), start) > timeout:
+                return -1
+
         self._write_8(_VL6180X_REG_SYSRANGE_START, 0x01)
         return self._read_range_continuous()
 
-    def _read_range_continuous(self):
-        """Read the range when in continuous mode"""
+    def _read_range_continuous(self, timeout=500):
+        """Read the range when in continuous mode. Returns -1 on timeout."""
+        start = utime.ticks_ms()
 
         # Poll until bit 2 is set
         while not self._read_8(_VL6180X_REG_RESULT_INTERRUPT_STATUS_GPIO) & 0x04:
-            pass
+            if utime.ticks_diff(utime.ticks_ms(), start) > timeout:
+                return -1
 
         # read range in mm
         range_ = self._read_8(_VL6180X_REG_RESULT_RANGE_VAL)
@@ -367,3 +376,10 @@ class VL6180X:
         )
         data = self._i2c.readfrom(self._address, 2)
         return (data[0] << 8) | data[1]
+
+    def set_address(self, new_address):
+        """Change the I2C address of the sensor (7-bit)."""
+        if not 0x08 <= new_address <= 0x77:
+            raise ValueError("Address must be 0x08-0x77")
+        self._write_8(_VL6180X_REG_I2C_SLAVE_DEVICE_ADDRESS, new_address & 0x7F)
+        self._address = new_address
