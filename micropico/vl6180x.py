@@ -1,47 +1,12 @@
-# SPDX-FileCopyrightText: 2017 Tony DiCola for Adafruit Industries
-#
-# SPDX-License-Identifier: MIT
-
 """
-`adafruit_vl6180x`
-====================================================
+I have attempted to port this over from CircuitPython
 
-CircuitPython module for the VL6180X distance sensor.  See
-examples/simpletest.py for a demo of the usage.
-
-* Author(s): Tony DiCola, Jonas Schatz
-
-Implementation Notes
---------------------
-
-**Hardware:**
-
-* Adafruit `VL6180X Time of Flight Distance Ranging Sensor (VL6180)
-  <https://www.adafruit.com/product/3316>`_ (Product ID: 3316)
-
-**Software and Dependencies:**
-
-* Adafruit CircuitPython firmware for the ESP8622 and M0-based boards:
-  https://github.com/adafruit/circuitpython/releases
-* Adafruit's Bus Device library: https://github.com/adafruit/Adafruit_CircuitPython_BusDevice
+Source: https://github.com/adafruit/Adafruit_CircuitPython_VL6180X/blob/main/adafruit_vl6180x.py
 """
 
 import struct
-import time
-
-from adafruit_bus_device import i2c_device
+import utime
 from micropython import const
-
-try:
-    from typing import List, Optional
-
-    from busio import I2C
-except ImportError:
-    pass
-
-
-__version__ = "0.0.0+auto.0"
-__repo__ = "https://github.com/adafruit/Adafruit_CircuitPython_VL6180X.git"
 
 # Registers
 _VL6180X_REG_IDENTIFICATION_MODEL_ID = const(0x000)
@@ -105,8 +70,9 @@ class VL6180X:
     :param int offset: The offset to be applied to measurements, in mm
     """
 
-    def __init__(self, i2c: I2C, address: int = _VL6180X_DEFAULT_I2C_ADDR, offset: int = 0) -> None:
-        self._device = i2c_device.I2CDevice(i2c, address)
+    def __init__(self, i2c, address=_VL6180X_DEFAULT_I2C_ADDR, offset=0):
+        self._i2c = i2c
+        self._address = address
         if self._read_8(_VL6180X_REG_IDENTIFICATION_MODEL_ID) != 0xB4:
             raise RuntimeError("Could not find VL6180X, is it connected and powered?")
         self._load_settings()
@@ -116,20 +82,20 @@ class VL6180X:
         # Reset a sensor that crashed while in continuous mode
         if self.continuous_mode_enabled:
             self.stop_range_continuous()
-            time.sleep(0.1)
+            utime.sleep(0.1)
 
         # Activate history buffer for range measurement
         self._write_8(_VL6180X_REG_SYSTEM_HISTORY_CTRL, 0x01)
 
     @property
-    def range(self) -> int:
+    def range(self):
         """Read the range of an object in front of sensor and return it in mm."""
         if self.continuous_mode_enabled:
             return self._read_range_continuous()
         return self._read_range_single()
 
     @property
-    def range_from_history(self) -> Optional[int]:
+    def range_from_history(self):
         """Read the latest range data from history
         To do so, you don't have to wait for a complete measurement."""
 
@@ -139,7 +105,7 @@ class VL6180X:
         return self._read_8(_VL6180X_REG_RESULT_HISTORY_BUFFER_0)
 
     @property
-    def ranges_from_history(self) -> Optional[List[int]]:
+    def ranges_from_history(self):
         """Read the last 16 range measurements from history"""
 
         if not self.range_history_enabled:
@@ -148,10 +114,10 @@ class VL6180X:
         return [self._read_8(_VL6180X_REG_RESULT_HISTORY_BUFFER_0 + age) for age in range(16)]
 
     @property
-    def range_history_enabled(self) -> bool:
+    def range_history_enabled(self):
         """Checks if history buffer stores range data"""
 
-        history_ctrl: int = self._read_8(_VL6180X_REG_SYSTEM_HISTORY_CTRL)
+        history_ctrl = self._read_8(_VL6180X_REG_SYSTEM_HISTORY_CTRL)
 
         if history_ctrl & 0x0:
             print("History buffering not enabled")
@@ -163,7 +129,7 @@ class VL6180X:
 
         return True
 
-    def start_range_continuous(self, period: int = 100) -> None:
+    def start_range_continuous(self, period=100):
         """Start continuous range mode
 
         :param int period: Time delay between measurements, in milliseconds; the value you
@@ -182,35 +148,35 @@ class VL6180X:
         # Start continuous range measurement
         self._write_8(_VL6180X_REG_SYSRANGE_START, 0x03)
 
-    def stop_range_continuous(self) -> None:
+    def stop_range_continuous(self):
         """Stop continuous range mode. It is advised to wait for about 0.3s
         afterwards to avoid issues with the interrupt flags"""
         if self.continuous_mode_enabled:
             self._write_8(_VL6180X_REG_SYSRANGE_START, 0x01)
 
     @property
-    def continuous_mode_enabled(self) -> bool:
+    def continuous_mode_enabled(self):
         """Checks if continuous mode is enabled"""
         return self._read_8(_VL6180X_REG_SYSRANGE_START) > 1 & 0x1
 
     @property
-    def offset(self) -> int:
+    def offset(self):
         """Read and sets the manual offset for the sensor, in millimeters"""
         return self._offset
 
     @offset.setter
-    def offset(self, offset: int) -> None:
+    def offset(self, offset):
         self._write_8(_VL6180X_REG_SYSRANGE_PART_TO_PART_RANGE_OFFSET, struct.pack("b", offset)[0])
         self._offset = offset
 
-    def _read_range_single(self) -> int:
+    def _read_range_single(self):
         """Read the range when in single-shot mode"""
         while not self._read_8(_VL6180X_REG_RESULT_RANGE_STATUS) & 0x01:
             pass
         self._write_8(_VL6180X_REG_SYSRANGE_START, 0x01)
         return self._read_range_continuous()
 
-    def _read_range_continuous(self) -> int:
+    def _read_range_continuous(self):
         """Read the range when in continuous mode"""
 
         # Poll until bit 2 is set
@@ -225,7 +191,7 @@ class VL6180X:
 
         return range_
 
-    def read_lux(self, gain: int) -> float:
+    def read_lux(self, gain) -> float:
         """Read the lux (light value) from the sensor and return it.  Must
         specify the gain value to use for the lux reading:
 
@@ -286,7 +252,7 @@ class VL6180X:
         return lux
 
     @property
-    def range_status(self) -> int:
+    def range_status(self):
         """Retrieve the status/error from a previous range read.  This will
         return a constant value such as:
 
@@ -309,7 +275,7 @@ class VL6180X:
         """
         return self._read_8(_VL6180X_REG_RESULT_RANGE_STATUS) >> 4
 
-    def _load_settings(self) -> None:
+    def _load_settings(self):
         # private settings from page 24 of app note
         self._write_8(0x0207, 0x01)
         self._write_8(0x0208, 0x01)
@@ -365,39 +331,39 @@ class VL6180X:
         self._write_8(0x0014, 0x24)  # Configures interrupt on 'New Sample
         # Ready threshold event'
 
-    def _write_8(self, address: int, data: int) -> None:
+    def _write_8(self, address, data):
         # Write 1 byte of data from the specified 16-bit register address.
-        with self._device:
-            self._device.write(bytes([(address >> 8) & 0xFF, address & 0xFF, data]))
+        self._i2c.writeto(
+            self._address, bytes([(address >> 8) & 0xFF, address & 0xFF, data])
+        )
 
-    def _write_16(self, address: int, data: int) -> None:
+    def _write_16(self, address, data):
         # Write a 16-bit big endian value to the specified 16-bit register
         # address.
-        with self._device as i2c:
-            i2c.write(
-                bytes(
-                    [
-                        (address >> 8) & 0xFF,
-                        address & 0xFF,
-                        (data >> 8) & 0xFF,
-                        data & 0xFF,
-                    ]
-                )
-            )
+        self._i2c.writeto(
+            self._address,
+            bytes(
+                [
+                    (address >> 8) & 0xFF,
+                    address & 0xFF,
+                    (data >> 8) & 0xFF,
+                    data & 0xFF,
+                ]
+            ),
+        )
 
-    def _read_8(self, address: int) -> int:
+    def _read_8(self, address):
         # Read and return a byte from the specified 16-bit register address.
-        with self._device as i2c:
-            result = bytearray(1)
-            i2c.write(bytes([(address >> 8) & 0xFF, address & 0xFF]))
-            i2c.readinto(result)
-            return result[0]
+        self._i2c.writeto(
+            self._address, bytes([(address >> 8) & 0xFF, address & 0xFF]), False
+        )
+        return self._i2c.readfrom(self._address, 1)[0]
 
-    def _read_16(self, address: int) -> int:
+    def _read_16(self, address):
         # Read and return a 16-bit unsigned big endian value read from the
         # specified 16-bit register address.
-        with self._device as i2c:
-            result = bytearray(2)
-            i2c.write(bytes([(address >> 8) & 0xFF, address & 0xFF]))
-            i2c.readinto(result)
-            return (result[0] << 8) | result[1]
+        self._i2c.writeto(
+            self._address, bytes([(address >> 8) & 0xFF, address & 0xFF]), False
+        )
+        data = self._i2c.readfrom(self._address, 2)
+        return (data[0] << 8) | data[1]
