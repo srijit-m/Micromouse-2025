@@ -262,6 +262,9 @@ class Micromouse():
     def encoder_2_counts(self):
         return self.encoder_2.read()
 
+    def avg_encoder_counts(self):
+        return (self.encoder_1_counts() + self.encoder_2_counts()) // 2
+
     def encoder_1_distance(self):
         """Return linear distance (mm) travelled by motor 1 as measured by encoder"""
         revolutions = self.encoder_1_counts() / ENCODER_1_COUNTS_PER_REV
@@ -335,11 +338,20 @@ class Micromouse():
             difference = self.encoder_1_counts() - self.encoder_2_counts()
         self.drive_stop()
 
-    def back_up(self, speed=255):
-        """Drive the mouse backwards to align with the wall. Uses the encoders
-        to tell when wall has been reached."""
-        # self.drive(-speed)
-        # TODO
+    def back_up(self, speed=MIN_PWM, timeout=1000):
+        """Drive the mouse backwards to align with a back wall.
+        Uses the encoders to tell when wall has been reached."""
+        self.drive(-abs(speed))
+
+        start_time = utime.ticks_ms()
+        prev_counts = self.avg_encoder_counts()
+        while utime.ticks_diff(utime.ticks_ms(), start_time) < timeout:
+            utime.sleep_ms(50)
+            counts = self.avg_encoder_counts()
+            if counts == prev_counts:
+                break
+            prev_counts = counts
+        self.drive_stop()
 
 
 class Controller:
