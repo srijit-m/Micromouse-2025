@@ -7,6 +7,7 @@ Source: https://github.com/adafruit/Adafruit_CircuitPython_VL6180X/blob/main/ada
 import struct
 import utime
 from micropython import const
+from machine import Pin
 
 # Registers
 _VL6180X_REG_IDENTIFICATION_MODEL_ID = const(0x000)
@@ -89,6 +90,9 @@ class VL6180X:
 
         # Activate history buffer for range measurement
         self._write_8(_VL6180X_REG_SYSTEM_HISTORY_CTRL, 0x01)
+        #1 is the front, 2 is the left, 3 is the right
+            #Front
+            
 
     @property
     def range(self):
@@ -178,7 +182,7 @@ class VL6180X:
 
         while not self._read_8(_VL6180X_REG_RESULT_RANGE_STATUS) & 0x01:
             if utime.ticks_diff(utime.ticks_ms(), start) > timeout:
-                return -1
+                return 255
 
         self._write_8(_VL6180X_REG_SYSRANGE_START, 0x01)
         return self._read_range_continuous()
@@ -190,7 +194,7 @@ class VL6180X:
         # Poll until bit 2 is set
         while not self._read_8(_VL6180X_REG_RESULT_INTERRUPT_STATUS_GPIO) & 0x04:
             if utime.ticks_diff(utime.ticks_ms(), start) > timeout:
-                return -1
+                return 255
 
         # read range in mm
         range_ = self._read_8(_VL6180X_REG_RESULT_RANGE_VAL)
@@ -198,7 +202,7 @@ class VL6180X:
         # clear interrupt
         self._write_8(_VL6180X_REG_SYSTEM_INTERRUPT_CLEAR, 0x07)
 
-        return range_
+        return range_ + self.offset
 
     def read_lux(self, gain) -> float:
         """Read the lux (light value) from the sensor and return it.  Must

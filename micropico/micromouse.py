@@ -1,11 +1,12 @@
 from micropython import const
-from machine import Pin, Timer
+from machine import Pin, Timer, I2C
 from motor import Motor
 from encoder_portable import Encoder
 from pid import PID
 from maze import NORTH, EAST, SOUTH, WEST
 import math
 import utime
+from vl6180x import VL6180X
 
 START_POS = (0, 0)
 START_HEADING = NORTH
@@ -89,6 +90,55 @@ class Micromouse():
         # Other
         self.blink_timer = Timer()
 
+        i2c = I2C(1, scl=Pin(3), sda=Pin(2))
+
+        self.xshut_left = Pin(7, Pin.OUT)
+        self.xshut_right = Pin(6, Pin.OUT)
+
+        # Hold both in reset
+        self.xshut_left.value(0)
+        self.xshut_right.value(0)
+        utime.sleep_ms(50)
+
+        # -------------------------
+        # LEFT SENSOR
+        # -------------------------
+        self.xshut_left.value(1)
+
+        # Wait until it appears on the bus
+        for _ in range(20):  # up to ~200 ms
+            if 0x29 in i2c.scan():
+                break
+            utime.sleep_ms(10)
+
+        self.left_sensor = VL6180X(i2c, 0x29, 5)
+        self.left_sensor.set_address(0x30)
+        utime.sleep_ms(20)
+
+        # -------------------------
+        # RIGHT SENSOR
+        # -------------------------
+        self.xshut_right.value(1)
+
+        for _ in range(20):
+            if 0x29 in i2c.scan():
+                break
+            utime.sleep_ms(10)
+
+        self.right_sensor = VL6180X(i2c, 0x29, 5)
+        self.right_sensor.set_address(0x31)
+        utime.sleep_ms(20)
+
+        # -------------------------
+        # FRONT SENSOR (separate bus, no XSHUT)
+        # -------------------------
+        self.front_sensor = VL6180X(
+            I2C(0, scl=Pin(1), sda=Pin(0)),
+            0x29,
+            5
+        )
+
+    
     def get_position(self):
         return self.position
 

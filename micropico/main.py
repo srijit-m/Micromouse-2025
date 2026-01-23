@@ -3,6 +3,7 @@ from micromouse import Micromouse
 from maze import Maze
 from machine import Pin, Timer
 import utime
+import time
 
 # maze config
 MAZE_WIDTH = const(9)
@@ -67,7 +68,7 @@ if __name__ == "__main__":
         pass
 
     # main code after here
-
+    """
     while True:
         # mm.move_forward(180)
         # sleep_ms(200)
@@ -78,6 +79,7 @@ if __name__ == "__main__":
         for _ in range(8):
             mm.turn(-90, 1)
             utime.sleep_ms(250)
+    """
 
     # back up
     # mm.move(200)
@@ -109,6 +111,9 @@ if __name__ == "__main__":
     # print(f"{e1=}, {e2=}")
     # print(f"{d1=}, {d2=}")
     # ####
+    while True:
+        print(f"Front Sensor: {mm.front_sensor._read_range_single()}, Left Sensor: {mm.left_sensor._read_range_single()}, Right Sensor: {mm.right_sensor._read_range_single()}")
+        time.sleep(0.5)
 
     mm.led_green_set(0)
     mm.led_red_set(1)
