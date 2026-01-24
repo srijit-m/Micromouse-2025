@@ -404,20 +404,31 @@ class Micromouse():
         #Check for a wall to the right
         if right_distance < 75:
             #There is a wall to the right
-            if right_distance > 59:
+            if right_distance > 57:
                 self.turn(5, 1.0)               
             elif right_distance < 47:
                self.turn(-5, 1.0)
         elif left_distance < 75: 
-            if left_distance > 53:
+            if left_distance > 54:
                 self.turn(-5, 1.0)
-            elif left_distance < 43:
+            elif left_distance < 44:
                 self.turn(5, 1.0)
+    
+    def wall_align_front(self):
+        """This function is for aligning with the front wall"""
+        front_distance, _, _ = self.read_tof_sensors()
+        if (front_distance < 80):
+            #There is a wall in front
+            error = front_distance - 60
+            self.move(error, 1.0)
+
     
     def move_one_cell(self):
         self.move(180, 1.0)
         utime.sleep_ms(100)
         self.wall_align_side()
+        utime.sleep_ms(50)
+        self.wall_align_front()
         utime.sleep_ms(50)
 
     def move_forward_encoders(self, distance):

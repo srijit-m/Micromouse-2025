@@ -67,7 +67,7 @@ if __name__ == "__main__":
     elif mode == SPEEDRUN:
         pass
     
-    """
+    
     mm.move_one_cell()
     time.sleep(1)
     mm.move_one_cell()
@@ -101,13 +101,5 @@ if __name__ == "__main__":
     time.sleep(1)
     mm.move_one_cell()
     mm.move_one_cell()
-    """
-
-    while True:
-        print(f"Front Sensor Distance: {mm.front_sensor._read_range_single()}")
-        time.sleep(0.5)
-
-
-
-    mm.led_green_set(0)
-    mm.led_red_set(1)
+    mm.led_green_set(1)
+    mm.led_red_set(0)
