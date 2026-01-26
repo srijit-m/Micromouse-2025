@@ -23,6 +23,9 @@ MM_PER_REV = 3.14159 * WHEEL_DIAMETER
 # compensate for the mouse undershooting left turns
 LEFT_TURN_CORRECTION = 1.004
 
+#Compensate for slight drift right, measured in counts
+ANGLE_BIAS = -22
+
 PID_DT = 0.010  # seconds
 
 # tested with dt = 0.01
@@ -35,9 +38,17 @@ KD_ANGLE = 0.03
 DIST_THRESHOLD = const(75)  # 2.5mm
 ANGLE_THRESHOLD = const(100)  # 2 degrees
 
+
 # min pwm that motors can move at (actually 90 but didn't work well with pid)
 MIN_PWM = const(150)
 MAX_PWM = const(255)
+
+#TOF Sensor Constants in mm
+TOF_DISTANCE = 50
+TOF_DISTANCE_BAND = 7
+WALL_THRESHOLD = 80
+FRONT_BACKUP_DISTANCE = 62
+
 
 class Micromouse():
     """
@@ -349,8 +360,9 @@ class Micromouse():
         """
         self.reset_encoders()
         self.controller.reset()
-
-        self.controller.set_goal_distance(distance)
+        #After wiring the micromouse up again, I put the motors the 
+        #wrong way around, thus I have changed this to -distance
+        self.controller.set_goal_distance(-distance)
         self.controller.set_goal_angle(0)
 
         self.update_motors(speed)
@@ -412,34 +424,37 @@ class Micromouse():
         #First get sensor readings
         _, left_distance, right_distance = self.read_tof_sensors()
         #Check for a wall to the right
-        if right_distance < 75:
+        if right_distance <  WALL_THRESHOLD:
             #There is a wall to the right
-            if right_distance > 57:
-                self.turn(5, 1.0)               
-            elif right_distance < 47:
-               self.turn(-5, 1.0)
-        elif left_distance < 75: 
-            if left_distance > 54:
+            if right_distance > TOF_DISTANCE+TOF_DISTANCE_BAND:
+                self.turn(5, 1.0)                                                  
+            elif right_distance < TOF_DISTANCE-TOF_DISTANCE_BAND:
                 self.turn(-5, 1.0)
-            elif left_distance < 44:
+    
+        elif left_distance < WALL_THRESHOLD: 
+            if left_distance > TOF_DISTANCE+TOF_DISTANCE_BAND:
+                self.turn(-5, 1.0)
+            elif left_distance < TOF_DISTANCE-TOF_DISTANCE_BAND:
                 self.turn(5, 1.0)
+        
+        self.drive_stop()
     
     def wall_align_front(self):
         """This function is for aligning with the front wall"""
         front_distance, _, _ = self.read_tof_sensors()
-        if (front_distance < 80):
+        if (front_distance < WALL_THRESHOLD+20):
             #There is a wall in front
-            error = front_distance - 60
+            error = front_distance - FRONT_BACKUP_DISTANCE
             self.move(error, 1.0)
 
     
     def move_one_cell(self):
         self.move(180, 1.0)
-        utime.sleep_ms(100)
+        utime.sleep_ms(200)
         self.wall_align_side()
-        utime.sleep_ms(50)
+        utime.sleep_ms(200)
         self.wall_align_front()
-        utime.sleep_ms(50)
+        utime.sleep_ms(100)
 
     def move_cells(self, n=1, speed=1.0):
         """Move forward/backward n cells and update the internal position state"""
@@ -537,7 +552,7 @@ class Controller:
 
     def update(self, encoder_1, encoder_2, dt):
         dist_error = self._goal_counts - (encoder_1 + encoder_2) / 2
-        angle_error = self._goal_difference - (encoder_2 - encoder_1)
+        angle_error = self._goal_difference - (encoder_2 - encoder_1) + ANGLE_BIAS
 
         self._at_goal = (
             abs(dist_error) < DIST_THRESHOLD and abs(angle_error) < ANGLE_THRESHOLD
