@@ -3,12 +3,14 @@ from machine import Pin, Timer
 from motor import Motor
 from encoder_portable import Encoder
 from pid import PID
-from maze import NORTH, EAST, SOUTH, WEST
+from grid import *
 import math
 import utime
 
 START_POS = (0, 0)
 START_HEADING = NORTH
+
+CELL_SIZE_MM = 180
 
 WHEEL_DIAMETER = const(44)  # mm
 ENCODER_1_COUNTS_PER_REV = const(4280)
@@ -65,6 +67,9 @@ class Micromouse():
             return
         self.exists = True
 
+        self.start_pos = START_POS
+        self.start_heading = START_HEADING
+
         self.position = START_POS
         self.heading = START_HEADING
 
@@ -88,12 +93,6 @@ class Micromouse():
 
         # Other
         self.blink_timer = Timer()
-
-    def get_position(self):
-        return self.position
-
-    def get_heading(self):
-        return self.heading
 
     def led_set(self, red_val, green_val):
         """
@@ -210,17 +209,18 @@ class Micromouse():
         elif index < 1:
             return (sensor_1, sensor_2, sensor_3)
 
+    def wall_front(self):
+        return False
+
+    def wall_left(self):
+        return False
+
+    def wall_right(self):
+        return False
+
     def drive(self, power=255):
         self.motor_1.spin_power(power)
         self.motor_2.spin_power(power)
-
-    def turn_right(self, power=255):
-        self.motor_2.spin_forward(power)
-        self.motor_1.spin_backward(power)
-
-    def turn_left(self, power=255):
-        self.motor_2.spin_backward(power)
-        self.motor_1.spin_forward(power)
 
     def drive_stop(self):
         """
@@ -250,8 +250,6 @@ class Micromouse():
         """
         self.motor_2.invert_motor()
 
-    """These functions have been added by me due to the faulty encoders"""
-
     def reset_encoders(self):
         self.encoder_1.reset()
         self.encoder_2.reset()
@@ -276,6 +274,9 @@ class Micromouse():
         return revolutions * MM_PER_REV
 
     def move(self, distance, speed=1.0):
+        """Move forward by the specified distance in mm. If the distance is negative,
+        move backward instead.
+        """
         self.reset_encoders()
         self.controller.reset()
 
@@ -285,6 +286,9 @@ class Micromouse():
         self.update_motors(speed)
 
     def turn(self, angle, speed=1.0):
+        """Turn right by the specified angle in degrees. If the angle is negative,
+        turn left instead.
+        """
         self.reset_encoders()
         self.controller.reset()
 
@@ -317,6 +321,48 @@ class Micromouse():
 
         self.drive_stop()
 
+    def move_cells(self, n=1, speed=1.0):
+        """Move forward/backward n cells and update the internal position state"""
+        self.move(n * CELL_SIZE_MM, speed)
+        self.position = step(self.position, self.heading, n)
+
+    def turn_right_90(self, speed=1.0):
+        """Turn right 90 degrees and update the internal heading states"""
+        self.turn(90, speed)
+        self.heading = right(self.heading)
+
+    def turn_left_90(self, speed=1.0):
+        """Turn left 90 degrees and update the internal heading state"""
+        self.turn(-90, speed)
+        self.heading = left(self.heading)
+
+    def turn_around(self, speed=1.0):
+        """Turn 180 degrees and update the internal heading state"""
+        self.turn(180, speed)
+        self.heading = behind(self.heading)
+
+    def turn_to_face(self, direction, speed=1.0):
+        """Turn to face the specified direction and update the internal heading state"""
+        delta = (direction - self.heading) * 90
+        delta = (delta + 180) % 360 - 180
+        self.turn(delta, speed)
+        self.heading = direction
+
+    def back_up(self, speed=MIN_PWM, timeout=1000):
+        """Drive the mouse backwards to align with a back wall.
+        Uses the encoders to tell when wall has been reached."""
+        self.drive(-abs(speed))
+
+        start_time = utime.ticks_ms()
+        prev_counts = self.avg_encoder_counts()
+        while utime.ticks_diff(utime.ticks_ms(), start_time) < timeout:
+            utime.sleep_ms(50)
+            counts = self.avg_encoder_counts()
+            if counts == prev_counts:
+                break
+            prev_counts = counts
+        self.drive_stop()
+
     def move_forward_encoders(self, distance):
         self.reset_encoders()
         revs = distance / (math.pi * WHEEL_DIAMETER)
@@ -333,24 +379,9 @@ class Micromouse():
         self.reset_encoders()
         difference = 0
         goal_difference = 985
-        self.turn_left(power)
+        self.turn_left_90(power)
         while (difference < goal_difference):
             difference = self.encoder_1_counts() - self.encoder_2_counts()
-        self.drive_stop()
-
-    def back_up(self, speed=MIN_PWM, timeout=1000):
-        """Drive the mouse backwards to align with a back wall.
-        Uses the encoders to tell when wall has been reached."""
-        self.drive(-abs(speed))
-
-        start_time = utime.ticks_ms()
-        prev_counts = self.avg_encoder_counts()
-        while utime.ticks_diff(utime.ticks_ms(), start_time) < timeout:
-            utime.sleep_ms(50)
-            counts = self.avg_encoder_counts()
-            if counts == prev_counts:
-                break
-            prev_counts = counts
         self.drive_stop()
 
 
