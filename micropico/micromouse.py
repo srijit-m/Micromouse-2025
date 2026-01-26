@@ -273,7 +273,10 @@ class Micromouse():
         revolutions = self.encoder_2_counts() / ENCODER_2_COUNTS_PER_REV
         return revolutions * MM_PER_REV
 
-    def move_mm(self, distance, speed=1.0):
+    def move(self, distance, speed=1.0):
+        """Move forward by the specified distance in mm. If the distance is negative,
+        move backward instead.
+        """
         self.reset_encoders()
         self.controller.reset()
 
@@ -282,7 +285,10 @@ class Micromouse():
 
         self.update_motors(speed)
 
-    def turn_degrees(self, angle, speed=1.0):
+    def turn(self, angle, speed=1.0):
+        """Turn right by the specified angle in degrees. If the angle is negative,
+        turn left instead.
+        """
         self.reset_encoders()
         self.controller.reset()
 
@@ -315,34 +321,32 @@ class Micromouse():
 
         self.drive_stop()
 
-    ##### these functions update the internal position and heading states
-    def move_forward(self, n=1, speed=1.0):
-        """Move forward n cells"""
-        self.move_mm(n * CELL_SIZE_MM, speed)
+    def move_cells(self, n=1, speed=1.0):
+        """Move forward/backward n cells and update the internal position state"""
+        self.move(n * CELL_SIZE_MM, speed)
         self.position = step(self.position, self.heading, n)
 
-    def turn_right(self, speed=1.0):
-        """Turn right 90 degrees"""
-        self.turn_degrees(90, speed)
+    def turn_right_90(self, speed=1.0):
+        """Turn right 90 degrees and update the internal heading states"""
+        self.turn(90, speed)
         self.heading = right(self.heading)
 
-    def turn_left(self, speed=1.0):
-        """Turn left 90 degrees"""
-        self.turn_degrees(-90, speed)
+    def turn_left_90(self, speed=1.0):
+        """Turn left 90 degrees and update the internal heading state"""
+        self.turn(-90, speed)
         self.heading = left(self.heading)
 
     def turn_around(self, speed=1.0):
-        """Turn 180 degrees"""
-        self.turn_degrees(180, speed)
+        """Turn 180 degrees and update the internal heading state"""
+        self.turn(180, speed)
         self.heading = behind(self.heading)
 
     def turn_to_face(self, direction, speed=1.0):
+        """Turn to face the specified direction and update the internal heading state"""
         delta = (direction - self.heading) * 90
         delta = (delta + 180) % 360 - 180
-        self.turn_degrees(delta, speed)
+        self.turn(delta, speed)
         self.heading = direction
-
-    #####
 
     def back_up(self, speed=MIN_PWM, timeout=1000):
         """Drive the mouse backwards to align with a back wall.
@@ -375,7 +379,7 @@ class Micromouse():
         self.reset_encoders()
         difference = 0
         goal_difference = 985
-        self.turn_left(power)
+        self.turn_left_90(power)
         while (difference < goal_difference):
             difference = self.encoder_1_counts() - self.encoder_2_counts()
         self.drive_stop()
