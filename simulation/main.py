@@ -423,6 +423,41 @@ def main():
     maze = Maze(WIDTH, HEIGHT)
     mouse = Mouse(START, HEADING)
 
+    # TEST ALGORITHM
+    maze.update_wall((0, 0), EAST, KNOWN_WALL)
+    maze.update_wall((0, 1), EAST, KNOWN_WALL)
+    maze.update_wall((0, 2), EAST, KNOWN_WALL)
+    maze.update_wall((0, 4), EAST, KNOWN_WALL)
+    maze.update_wall((2, 2), EAST, KNOWN_WALL)
+    maze.update_wall((2, 2), SOUTH, KNOWN_WALL)
+    maze.update_wall((2, 2), WEST, KNOWN_WALL)
+    maze.update_wall((2, 3), EAST, KNOWN_WALL)
+    maze.update_wall((2, 3), WEST, KNOWN_WALL)
+    maze.update_wall((2, 4), WEST, KNOWN_WALL)
+    maze.update_wall((4, 0), WEST, KNOWN_WALL)
+    maze.update_wall((4, 1), WEST, KNOWN_WALL)
+    maze.update_wall((4, 2), NORTH, KNOWN_WALL)
+
+    assert extract_path(maze, mouse, require_valid_path=False) == [
+        0,
+        0,
+        0,
+        1,
+        2,
+        2,
+        1,
+        1,
+        0,
+        0,
+        0,
+        3,
+        2,
+        2,
+    ]
+    # END TEST
+
+    exit()
+
     while True:
         search_to(maze, mouse, maze.goal)
 
