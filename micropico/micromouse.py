@@ -16,12 +16,15 @@ CELL_SIZE_MM = 180
 WHEEL_DIAMETER = const(44)  # mm
 ENCODER_1_COUNTS_PER_REV = const(4280)
 ENCODER_2_COUNTS_PER_REV = const(4280)
-ENCODER_DIFF_PER_REV = const(17825)  # drifts about 3mm forward each 360 degrees turn
+ENCODER_DIFF_PER_REV = const(17950)  # drifts about 3mm forward each 360 degrees turn # 17825
 
 MM_PER_REV = 3.14159 * WHEEL_DIAMETER
 
 # compensate for the mouse undershooting left turns
 LEFT_TURN_CORRECTION = 1.004
+
+#Compensate for slight drift right, measured in counts
+ANGLE_BIAS = 0 # this is in degrees now # it was 20 counts
 
 PID_DT = 0.010  # seconds
 
@@ -35,9 +38,19 @@ KD_ANGLE = 0.03
 DIST_THRESHOLD = const(75)  # 2.5mm
 ANGLE_THRESHOLD = const(100)  # 2 degrees
 
+
 # min pwm that motors can move at (actually 90 but didn't work well with pid)
 MIN_PWM = const(150)
 MAX_PWM = const(255)
+
+#TOF Sensor Constants in mm
+TOF_DISTANCE = 50
+TOF_DISTANCE_BAND = 5
+WALL_THRESHOLD = 100
+FRONT_BACKUP_DISTANCE = 62
+CENTRE_ALIGN_DISTANCE = 20
+CENTRE_ALIGN_ANGLE = -0.7
+
 
 class Micromouse():
     """
@@ -349,9 +362,10 @@ class Micromouse():
         """
         self.reset_encoders()
         self.controller.reset()
-
-        self.controller.set_goal_distance(distance)
-        self.controller.set_goal_angle(0)
+        #After wiring the micromouse up again, I put the motors the 
+        #wrong way around, thus I have changed this to -distance
+        self.controller.set_goal_distance(-distance)
+        self.controller.set_goal_angle(ANGLE_BIAS)
 
         self.update_motors(speed)
 
@@ -366,6 +380,17 @@ class Micromouse():
         self.controller.set_goal_angle(angle)
 
         self.update_motors(speed)
+
+    def move_to_centre(self, speed=1.0):
+        self.reset_encoders()
+        self.controller.reset()
+        #After wiring the micromouse up again, I put the motors the 
+        #wrong way around, thus I have changed this to -distance
+        self.controller.set_goal_distance(-CENTRE_ALIGN_DISTANCE)
+        self.controller.set_goal_angle(CENTRE_ALIGN_ANGLE)
+
+        self.update_motors(speed)
+
 
     def update_motors(self, speed=1.0):
         """Run PID control loop on motors until the mouse is at the goal"""
@@ -397,6 +422,17 @@ class Micromouse():
         pin.value(1)
         utime.sleep_ms(20)
     
+    def map_tof_distance_error(self, error):
+        """This will map a distance error (absolute value) of 5mm to 12mm
+        to a turn angle of 3 to 7 degrees"""
+        #If error is larger than 14mm, return 10
+        if error > 14:
+            return 10
+        #Constrain error
+        error = max(5, min(12, error))
+        turn_angle = 4/7 * error +1/7
+        return turn_angle
+          
     def read_tof_sensors(self):
         """Returns time of flight sensor readings as a tuple in the order front, left, right"""
         front_sensor_val = self.front_sensor._read_range_single()
@@ -412,34 +448,43 @@ class Micromouse():
         #First get sensor readings
         _, left_distance, right_distance = self.read_tof_sensors()
         #Check for a wall to the right
-        if right_distance < 75:
+        if right_distance <  WALL_THRESHOLD:
             #There is a wall to the right
-            if right_distance > 57:
-                self.turn(5, 1.0)               
-            elif right_distance < 47:
-               self.turn(-5, 1.0)
-        elif left_distance < 75: 
-            if left_distance > 54:
-                self.turn(-5, 1.0)
-            elif left_distance < 44:
-                self.turn(5, 1.0)
+            error = abs(right_distance - 50)
+            turn_angle = self.map_tof_distance_error(error)
+
+            if right_distance > TOF_DISTANCE+TOF_DISTANCE_BAND:
+                self.turn(turn_angle, 1.0)                                                  
+            elif right_distance < TOF_DISTANCE-TOF_DISTANCE_BAND:
+                self.turn(-turn_angle, 1.0)
+    
+        elif left_distance < WALL_THRESHOLD: 
+            error = abs(left_distance - 50)
+            turn_angle = self.map_tof_distance_error(error)
+
+            if left_distance > TOF_DISTANCE+TOF_DISTANCE_BAND:
+                self.turn(-turn_angle, 1.0)
+            elif left_distance < TOF_DISTANCE-TOF_DISTANCE_BAND:
+                self.turn(turn_angle, 1.0)
+        
+        self.drive_stop()
     
     def wall_align_front(self):
         """This function is for aligning with the front wall"""
         front_distance, _, _ = self.read_tof_sensors()
-        if (front_distance < 80):
+        if (front_distance < WALL_THRESHOLD):
             #There is a wall in front
-            error = front_distance - 60
+            error = front_distance - FRONT_BACKUP_DISTANCE
             self.move(error, 1.0)
 
     
     def move_one_cell(self):
         self.move(180, 1.0)
+        #utime.sleep_ms(200)
+        #self.wall_align_side()
+        utime.sleep_ms(200)
+        #self.wall_align_front()
         utime.sleep_ms(100)
-        self.wall_align_side()
-        utime.sleep_ms(50)
-        self.wall_align_front()
-        utime.sleep_ms(50)
 
     def move_cells(self, n=1, speed=1.0):
         """Move forward/backward n cells and update the internal position state"""
@@ -471,7 +516,7 @@ class Micromouse():
     def back_up(self, speed=MIN_PWM, timeout=1000):
         """Drive the mouse backwards to align with a back wall.
         Uses the encoders to tell when wall has been reached."""
-        self.drive(-abs(speed))
+        self.drive(abs(speed))
 
         start_time = utime.ticks_ms()
         prev_counts = self.avg_encoder_counts()

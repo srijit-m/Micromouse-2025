@@ -173,16 +173,61 @@ if __name__ == "__main__":
 
     mode = select_mode()
 
-    while True:
-        if mode == EXPLORE:
-            search_maze(maze, mm)
-            moves, optimal = maze.extract_moves(mm.start_pos, mm.start_heading)
-            if optimal:
-                mm.led_green_set(1)
-        elif mode == SPEEDRUN:
-            execute_moves(mm, moves)
+    if mode == EXPLORE:
+        pass
+    elif mode == SPEEDRUN:
+        pass
 
-    # HARDCODED PATH
+    #mm.back_up()
+    #time.sleep(1)
+
+    
+    """
+    for _ in range(8):
+        mm.turn_right_90()
+        utime.sleep_ms(250)
+
+    for _ in range(8):
+        mm.turn_left_90()
+        utime.sleep_ms(250)
+
+    exit()
+    """
+    
+
+    
+
+    mm.move_to_centre()
+    time.sleep(0.5)
+
+    for _ in range(4):
+        mm.move_one_cell()
+        time.sleep(1)
+    
+    mm.turn_right_90()
+    time.sleep(1)
+
+    mm.turn_right_90()
+    time.sleep(1)
+
+    mm.back_up()
+    time.sleep(0.5)
+
+
+    mm.move_to_centre()
+    time.sleep(0.5)
+
+    for _ in range(4):
+        mm.move_one_cell()
+        time.sleep(1)
+
+    mm.turn_right_90()
+    time.sleep(1)
+
+    mm.turn_right_90()
+    time.sleep(1)
+    exit()
+    
     mm.move_one_cell()
     time.sleep(1)
     mm.move_one_cell()
@@ -218,3 +263,8 @@ if __name__ == "__main__":
     mm.move_one_cell()
     mm.led_green_set(1)
     mm.led_red_set(0)
+
+    
+    
+    
+    
