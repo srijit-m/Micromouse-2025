@@ -119,17 +119,29 @@ def search_maze(maze, mouse):
     mouse.turn_to_face(mouse.start_heading)
 
 
-def execute_moves(mouse, moves, speed=FAST_SPEED):
-    """Execute a precomputed move sequence at speed."""
+def execute_moves(mouse, moves, speed=FAST_SPEED, interval=0, atomic=False):
+    """Execute a precomputed move sequence.
+
+    The mouse sleeps for interval milliseconds after each move.
+    If the atomic flag is True, forward moves are executed one cell at a time,
+    otherwise they are executed as multi-cell motions.
+    """
     for move, count in moves:
         if move == FORWARD:
-            mouse.move_forward(count, speed=speed)
+            if atomic:
+                for _ in count:
+                    mouse.move_forward(1, speed=speed)
+                    utime.sleep_ms(interval)
+                continue  # skip the other sleep
+            else:
+                mouse.move_forward(count, speed=speed)
         elif move == TURN_RIGHT:
             mouse.turn_right(speed=speed)
         elif move == TURN_AROUND:
             mouse.turn_around(speed=speed)
         elif move == TURN_LEFT:
             mouse.turn_left(speed=speed)
+        utime.sleep_ms(interval)
 
 
 if __name__ == "__main__":
