@@ -16,7 +16,7 @@ CELL_SIZE_MM = 180
 WHEEL_DIAMETER = const(44)  # mm
 ENCODER_1_COUNTS_PER_REV = const(4280)
 ENCODER_2_COUNTS_PER_REV = const(4280)
-ENCODER_DIFF_PER_REV = const(17950)  # drifts about 3mm forward each 360 degrees turn # 17825
+ENCODER_DIFF_PER_REV = const(18000)  # drifts about 3mm forward each 360 degrees turn # 17825
 
 MM_PER_REV = 3.14159 * WHEEL_DIAMETER
 
@@ -47,9 +47,9 @@ MAX_PWM = const(255)
 TOF_DISTANCE = 50
 TOF_DISTANCE_BAND = 5
 WALL_THRESHOLD = 100
-FRONT_BACKUP_DISTANCE = 62
+FRONT_BACKUP_DISTANCE = 63
 CENTRE_ALIGN_DISTANCE = 20
-CENTRE_ALIGN_ANGLE = -0.7
+CENTRE_ALIGN_ANGLE = 0
 
 
 class Micromouse():
@@ -422,6 +422,9 @@ class Micromouse():
         pin.value(1)
         utime.sleep_ms(20)
     
+    def map_range(self, x, in_min, in_max, out_min, out_max):
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+    
     def map_tof_distance_error(self, error):
         """This will map a distance error (absolute value) of 5mm to 12mm
         to a turn angle of 3 to 7 degrees"""
@@ -429,18 +432,14 @@ class Micromouse():
         if error > 14:
             return 10
         #Constrain error
-        error = max(5, min(12, error))
-        turn_angle = 4/7 * error +1/7
-        return turn_angle
+        return self.map_range(error, 5, 12, 2, 7)
           
     def read_tof_sensors(self):
         """Returns time of flight sensor readings as a tuple in the order front, left, right"""
         front_sensor_val = self.front_sensor._read_range_single()
-        utime.sleep_ms(50)
         left_sensor_val = self.left_sensor._read_range_single()
-        utime.sleep_ms(50)
+        utime.sleep_ms(5)
         right_sensor_val = self.right_sensor._read_range_single()
-        utime.sleep_ms(50)
         return front_sensor_val, left_sensor_val, right_sensor_val
     
     def wall_align_side(self):
@@ -454,18 +453,18 @@ class Micromouse():
             turn_angle = self.map_tof_distance_error(error)
 
             if right_distance > TOF_DISTANCE+TOF_DISTANCE_BAND:
-                self.turn(turn_angle, 1.0)                                                  
+                self.turn(turn_angle, 0.7)                                                  
             elif right_distance < TOF_DISTANCE-TOF_DISTANCE_BAND:
-                self.turn(-turn_angle, 1.0)
+                self.turn(-turn_angle, 0.7)
     
         elif left_distance < WALL_THRESHOLD: 
             error = abs(left_distance - 50)
             turn_angle = self.map_tof_distance_error(error)
 
             if left_distance > TOF_DISTANCE+TOF_DISTANCE_BAND:
-                self.turn(-turn_angle, 1.0)
+                self.turn(-turn_angle, 0.7)
             elif left_distance < TOF_DISTANCE-TOF_DISTANCE_BAND:
-                self.turn(turn_angle, 1.0)
+                self.turn(turn_angle, 0.7)
         
         self.drive_stop()
     
@@ -475,15 +474,15 @@ class Micromouse():
         if (front_distance < WALL_THRESHOLD):
             #There is a wall in front
             error = front_distance - FRONT_BACKUP_DISTANCE
-            self.move(error, 1.0)
+            self.move(error, 0.7)
 
     
     def move_one_cell(self):
         self.move(180, 1.0)
-        #utime.sleep_ms(200)
-        #self.wall_align_side()
         utime.sleep_ms(200)
-        #self.wall_align_front()
+        self.wall_align_side()
+        utime.sleep_ms(200)
+        self.wall_align_front()
         utime.sleep_ms(100)
 
     def move_cells(self, n=1, speed=1.0):

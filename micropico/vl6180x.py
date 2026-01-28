@@ -177,7 +177,7 @@ class VL6180X:
         self._offset = offset
 
     def _read_range_single(self, timeout=500):
-        """Read the range when in single-shot mode. Returns -1 on timeout."""
+        """Read the range when in single-shot mode. Returns 255 on timeout."""
         start = utime.ticks_ms()
 
         while not self._read_8(_VL6180X_REG_RESULT_RANGE_STATUS) & 0x01:
@@ -188,7 +188,7 @@ class VL6180X:
         return self._read_range_continuous()
 
     def _read_range_continuous(self, timeout=500):
-        """Read the range when in continuous mode. Returns -1 on timeout."""
+        """Read the range when in continuous mode. Returns 255 on timeout."""
         start = utime.ticks_ms()
 
         # Poll until bit 2 is set
