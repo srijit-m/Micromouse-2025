@@ -74,7 +74,7 @@ class Maze:
             if walls[idx] == UNKNOWN_WALL:
                 return assume_wall
             return walls[idx] == KNOWN_WALL
-        return True  # out of bounds
+        return False  # out of bounds
 
     def floodfill(self, goal, require_valid_path=False):
         """Flood the maze, updating the manhattan distances from start to goal.
@@ -94,10 +94,10 @@ class Maze:
                 neighbour = step(position, direction)
                 if (
                     self.within_bounds(neighbour)
-                    and self.get_dist(neighbour) == UNKNOWN_DIST
                     and not self.is_wall(
                         position, direction, assume_wall=require_valid_path
                     )
+                    and self.get_dist(neighbour) == UNKNOWN_DIST
                 ):
                     self.set_dist(neighbour, self.get_dist(position) + 1)
                     q.append(neighbour)
@@ -128,9 +128,9 @@ class Maze:
             if self.get_dist(neighbour) == current_dist - 1:
                 return direction
 
-        return None  # unreachable on valid maze TODO: add error handling
+        return heading  # unreachable on valid maze TODO: add error handling
 
-    def extract_path(self, position, heading, require_valid_path=True):
+    def extract_path(self, start_pos, start_heading, require_valid_path=True):
         """Extract the shortest path as a list of directions from the given position to the goal.
 
         When require_valid_path is True, unknown walls are treated as blocked.
@@ -138,9 +138,11 @@ class Maze:
 
         If the paths extracted under both assumptions are identical, then the extracted path is optimal.
         """
-        self.floodfill(self.goal, require_valid_path)
+        self.floodfill(self.goal, require_valid_path=require_valid_path)
 
         path = []
+        position = start_pos
+        heading = start_heading
 
         while position != self.goal:
             next_dir = self.next_direction(

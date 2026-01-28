@@ -7,9 +7,9 @@ import utime
 import time
 
 # maze config
-MAZE_WIDTH = const(9)
-MAZE_HEIGHT = const(9)
-MAZE_GOAL = (4, 4)
+MAZE_WIDTH = const(5)
+MAZE_HEIGHT = const(5)
+MAZE_GOAL = (MAZE_WIDTH // 2, MAZE_HEIGHT // 2)
 
 # modes
 IDLE = const(0)
@@ -98,8 +98,8 @@ def search_to(maze, mouse, goal, speed=SEARCH_SPEED):
 
     while mouse.position != goal:
         # update walls and distances
-        if update_walls(maze, mouse):
-            maze.floodfill(goal)
+        update_walls(maze, mouse)
+        maze.floodfill(goal)
 
         # determine next move
         target_dir = maze.next_direction(
