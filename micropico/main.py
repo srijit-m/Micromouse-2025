@@ -182,21 +182,21 @@ if __name__ == "__main__":
     #time.sleep(1)
 
     
-    """
-    for _ in range(8):
-        mm.turn_right_90()
-        utime.sleep_ms(250)
+    
+    # for _ in range(8):
+    #     mm.turn_right_90()
+    #     utime.sleep_ms(250)
 
-    for _ in range(8):
-        mm.turn_left_90()
-        utime.sleep_ms(250)
+    # for _ in range(8):
+    #     mm.turn_left_90()
+    #     utime.sleep_ms(250)
 
-    exit()
-    """
+    # exit()
+    
     
 
     
-
+    """
     mm.move_to_centre()
     time.sleep(0.5)
 
@@ -227,7 +227,10 @@ if __name__ == "__main__":
     mm.turn_right_90()
     time.sleep(1)
     exit()
-    
+    """
+
+    mm.move_to_centre(0.5)
+    time.sleep(0.5)   
     mm.move_one_cell()
     time.sleep(1)
     mm.move_one_cell()
