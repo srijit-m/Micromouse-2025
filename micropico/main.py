@@ -74,6 +74,7 @@ def update_walls(maze, mouse):
 
     front_wall_state = KNOWN_WALL if mouse.wall_front() else KNOWN_EMPTY
     left_wall_state = KNOWN_WALL if mouse.wall_left() else KNOWN_EMPTY
+    utime.sleep_ms(5)
     right_wall_state = KNOWN_WALL if mouse.wall_right() else KNOWN_EMPTY
 
     updated |= maze.update_wall(position, heading, front_wall_state)
@@ -110,6 +111,9 @@ def search_to(maze, mouse, goal, speed=SEARCH_SPEED):
         # move the mouse
         move_mouse(mouse, move, speed=speed)
 
+        # TODO: DEBUG add a delay for now
+        utime.sleep_ms(250)
+
 
 def search_maze(maze, mouse):
     """Search to the goal, then search back to the start.
@@ -117,8 +121,10 @@ def search_maze(maze, mouse):
     Assumes that the mouse is at the start position and orientation.
     """
     search_to(maze, mouse, maze.goal)
+
     search_to(maze, mouse, mouse.start_pos)
     mouse.turn_to_face(mouse.start_heading)
+    mouse.back_up()
 
 
 def execute_moves(mouse, moves, speed=FAST_SPEED, interval=0, atomic=False):
@@ -132,57 +138,67 @@ def execute_moves(mouse, moves, speed=FAST_SPEED, interval=0, atomic=False):
         if move == FORWARD:
             if atomic:
                 for _ in range(count):
-                    mouse.move_forward(1, speed=speed)
+                    mouse.move_cells(1, speed=speed)
                     utime.sleep_ms(interval)
                 continue  # skip the other sleep
             else:
-                mouse.move_forward(count, speed=speed)
+                mouse.move_cells(count, speed=speed)
         elif move == TURN_RIGHT:
-            mouse.turn_right(speed=speed)
+            mouse.turn_right_90(speed=speed)
         elif move == TURN_AROUND:
             mouse.turn_around(speed=speed)
         elif move == TURN_LEFT:
-            mouse.turn_left(speed=speed)
+            mouse.turn_left_90(speed=speed)
         utime.sleep_ms(interval)
 
 
 if __name__ == "__main__":
     maze = Maze(MAZE_WIDTH, MAZE_HEIGHT, MAZE_GOAL)
 
-    # TEST ALGORITHM
-    maze.update_wall((0, 0), EAST, KNOWN_WALL)
-    maze.update_wall((0, 1), EAST, KNOWN_WALL)
-    maze.update_wall((0, 2), EAST, KNOWN_WALL)
-    maze.update_wall((0, 4), EAST, KNOWN_WALL)
-    maze.update_wall((2, 2), EAST, KNOWN_WALL)
-    maze.update_wall((2, 2), SOUTH, KNOWN_WALL)
-    maze.update_wall((2, 2), WEST, KNOWN_WALL)
-    maze.update_wall((2, 3), EAST, KNOWN_WALL)
-    maze.update_wall((2, 3), WEST, KNOWN_WALL)
-    maze.update_wall((2, 4), WEST, KNOWN_WALL)
-    maze.update_wall((4, 0), WEST, KNOWN_WALL)
-    maze.update_wall((4, 1), WEST, KNOWN_WALL)
-    maze.update_wall((4, 2), NORTH, KNOWN_WALL)
+    # # TEST ALGORITHM
+    # maze.update_wall((0, 0), EAST, KNOWN_WALL)
+    # maze.update_wall((0, 1), EAST, KNOWN_WALL)
+    # maze.update_wall((0, 2), EAST, KNOWN_WALL)
+    # maze.update_wall((0, 4), EAST, KNOWN_WALL)
+    # maze.update_wall((2, 2), EAST, KNOWN_WALL)
+    # maze.update_wall((2, 2), SOUTH, KNOWN_WALL)
+    # maze.update_wall((2, 2), WEST, KNOWN_WALL)
+    # maze.update_wall((2, 3), EAST, KNOWN_WALL)
+    # maze.update_wall((2, 3), WEST, KNOWN_WALL)
+    # maze.update_wall((2, 4), WEST, KNOWN_WALL)
+    # maze.update_wall((4, 0), WEST, KNOWN_WALL)
+    # maze.update_wall((4, 1), WEST, KNOWN_WALL)
+    # maze.update_wall((4, 2), NORTH, KNOWN_WALL)
 
-    assert maze.extract_path(
-        mm.start_pos, mm.start_heading, require_valid_path=False
-    ) == [0, 0, 0, 1, 2, 2, 1, 1, 0, 0, 0, 3, 2, 2]
-    # END TEST
+    # assert maze.extract_path(
+    #     mm.start_pos, mm.start_heading, require_valid_path=False
+    # ) == [0, 0, 0, 1, 2, 2, 1, 1, 0, 0, 0, 3, 2, 2]
+    # # END TEST
 
     moves = []
 
-    mode = select_mode()
+    while True:
+        mode = select_mode()
 
-    if mode == EXPLORE:
-        pass
-    elif mode == SPEEDRUN:
-        pass
+        if mode == EXPLORE:
+            # align
+            mm.move_to_centre()
+            utime.sleep_ms(100)
 
-    #mm.back_up()
-    #time.sleep(1)
+            search_maze(maze, mm)
+            moves, optimal = maze.extract_moves(mm.start_pos, mm.start_heading)
+            if optimal:
+                mm.led_green_set(1)
+        elif mode == SPEEDRUN:
+            # align
+            mm.move_to_centre()
+            utime.sleep_ms(100)
 
-    
-    
+            execute_moves(mm, moves)
+
+    # mm.back_up()
+    # time.sleep(1)
+
     # for _ in range(8):
     #     mm.turn_right_90()
     #     utime.sleep_ms(250)
@@ -192,10 +208,7 @@ if __name__ == "__main__":
     #     utime.sleep_ms(250)
 
     # exit()
-    
-    
 
-    
     """
     mm.move_to_centre()
     time.sleep(0.5)
@@ -266,8 +279,3 @@ if __name__ == "__main__":
     mm.move_one_cell()
     mm.led_green_set(1)
     mm.led_red_set(0)
-
-    
-    
-    
-    
