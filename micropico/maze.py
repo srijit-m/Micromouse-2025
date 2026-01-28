@@ -10,6 +10,7 @@ UNKNOWN_WALL = const(2)
 UNKNOWN_DIST = const(255)
 QUEUE_SIZE = const(81)  # 81 should be enough for 9x9 maze
 
+
 class Maze:
 
     def __init__(self, width, height, goal=None):
@@ -101,7 +102,7 @@ class Maze:
                     self.set_dist(neighbour, self.get_dist(position) + 1)
                     q.append(neighbour)
 
-    def next_direction(self, position, heading):
+    def next_direction(self, position, heading, assume_wall=False):
         """Returns the direction to move, based on the current position and
 
         When multiple neighbouring cells have the same distance from the goal,
@@ -119,7 +120,9 @@ class Maze:
         for direction in directions:
             neighbour = step(position, direction)
 
-            if not self.within_bounds(neighbour) or self.is_wall(position, direction):
+            if not self.within_bounds(neighbour) or self.is_wall(
+                position, direction, assume_wall=assume_wall
+            ):
                 continue
 
             if self.get_dist(neighbour) == current_dist - 1:
@@ -142,7 +145,9 @@ class Maze:
         heading = start_heading
 
         while position != self.goal:
-            next_dir = self.next_direction(position, heading)
+            next_dir = self.next_direction(
+                position, heading, assume_wall=require_valid_path
+            )
             path.append(next_dir)
 
             position = step(position, next_dir)

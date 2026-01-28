@@ -102,7 +102,9 @@ def search_to(maze, mouse, goal, speed=SEARCH_SPEED):
         maze.floodfill(goal)
 
         # determine next move
-        target_dir = maze.next_direction(mouse.position, mouse.heading)
+        target_dir = maze.next_direction(
+            mouse.position, mouse.heading, assume_wall=True
+        )
         move = next_move(mouse.heading, target_dir)
 
         # move the mouse
@@ -119,17 +121,29 @@ def search_maze(maze, mouse):
     mouse.turn_to_face(mouse.start_heading)
 
 
-def execute_moves(mouse, moves, speed=FAST_SPEED):
-    """Execute a precomputed move sequence at speed."""
+def execute_moves(mouse, moves, speed=FAST_SPEED, interval=0, atomic=False):
+    """Execute a precomputed move sequence.
+
+    The mouse sleeps for interval milliseconds after each move.
+    If the atomic flag is True, forward moves are executed one cell at a time,
+    otherwise they are executed as multi-cell motions.
+    """
     for move, count in moves:
         if move == FORWARD:
-            mouse.move_forward(count, speed=speed)
+            if atomic:
+                for _ in range(count):
+                    mouse.move_forward(1, speed=speed)
+                    utime.sleep_ms(interval)
+                continue  # skip the other sleep
+            else:
+                mouse.move_forward(count, speed=speed)
         elif move == TURN_RIGHT:
             mouse.turn_right(speed=speed)
         elif move == TURN_AROUND:
             mouse.turn_around(speed=speed)
         elif move == TURN_LEFT:
             mouse.turn_left(speed=speed)
+        utime.sleep_ms(interval)
 
 
 if __name__ == "__main__":
@@ -159,16 +173,64 @@ if __name__ == "__main__":
 
     mode = select_mode()
 
-    while True:
-        if mode == EXPLORE:
-            search_maze(maze, mm)
-            moves, optimal = maze.extract_moves(mm.start_pos, mm.start_heading)
-            if optimal:
-                mm.led_green_set(1)
-        elif mode == SPEEDRUN:
-            execute_moves(mm, moves)
+    if mode == EXPLORE:
+        pass
+    elif mode == SPEEDRUN:
+        pass
 
-    # HARDCODED PATH
+    #mm.back_up()
+    #time.sleep(1)
+
+    
+    
+    # for _ in range(8):
+    #     mm.turn_right_90()
+    #     utime.sleep_ms(250)
+
+    # for _ in range(8):
+    #     mm.turn_left_90()
+    #     utime.sleep_ms(250)
+
+    # exit()
+    
+    
+
+    
+    """
+    mm.move_to_centre()
+    time.sleep(0.5)
+
+    for _ in range(4):
+        mm.move_one_cell()
+        time.sleep(1)
+    
+    mm.turn_right_90()
+    time.sleep(1)
+
+    mm.turn_right_90()
+    time.sleep(1)
+
+    mm.back_up()
+    time.sleep(0.5)
+
+
+    mm.move_to_centre()
+    time.sleep(0.5)
+
+    for _ in range(4):
+        mm.move_one_cell()
+        time.sleep(1)
+
+    mm.turn_right_90()
+    time.sleep(1)
+
+    mm.turn_right_90()
+    time.sleep(1)
+    exit()
+    """
+
+    mm.move_to_centre(0.5)
+    time.sleep(0.5)   
     mm.move_one_cell()
     time.sleep(1)
     mm.move_one_cell()
@@ -204,3 +266,8 @@ if __name__ == "__main__":
     mm.move_one_cell()
     mm.led_green_set(1)
     mm.led_red_set(0)
+
+    
+    
+    
+    
