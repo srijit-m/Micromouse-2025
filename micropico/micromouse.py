@@ -16,7 +16,7 @@ CELL_SIZE_MM = 180
 WHEEL_DIAMETER = const(44)  # mm
 ENCODER_1_COUNTS_PER_REV = const(4280)
 ENCODER_2_COUNTS_PER_REV = const(4280)
-ENCODER_DIFF_PER_REV = const(17825)  # drifts about 3mm forward each 360 degrees turn
+ENCODER_DIFF_PER_REV = const(17950)  # drifts about 3mm forward each 360 degrees turn # 17825
 
 MM_PER_REV = 3.14159 * WHEEL_DIAMETER
 
@@ -24,7 +24,7 @@ MM_PER_REV = 3.14159 * WHEEL_DIAMETER
 LEFT_TURN_CORRECTION = 1.004
 
 #Compensate for slight drift right, measured in counts
-ANGLE_BIAS = -20
+ANGLE_BIAS = 0 # this is in degrees now # it was 20 counts
 
 PID_DT = 0.010  # seconds
 
@@ -47,7 +47,9 @@ MAX_PWM = const(255)
 TOF_DISTANCE = 50
 TOF_DISTANCE_BAND = 5
 WALL_THRESHOLD = 100
-FRONT_BACKUP_DISTANCE = 64
+FRONT_BACKUP_DISTANCE = 62
+CENTRE_ALIGN_DISTANCE = 20
+CENTRE_ALIGN_ANGLE = -0.7
 
 
 class Micromouse():
@@ -363,7 +365,7 @@ class Micromouse():
         #After wiring the micromouse up again, I put the motors the 
         #wrong way around, thus I have changed this to -distance
         self.controller.set_goal_distance(-distance)
-        self.controller.set_goal_angle(0)
+        self.controller.set_goal_angle(ANGLE_BIAS)
 
         self.update_motors(speed)
 
@@ -378,6 +380,17 @@ class Micromouse():
         self.controller.set_goal_angle(angle)
 
         self.update_motors(speed)
+
+    def move_to_centre(self, speed=1.0):
+        self.reset_encoders()
+        self.controller.reset()
+        #After wiring the micromouse up again, I put the motors the 
+        #wrong way around, thus I have changed this to -distance
+        self.controller.set_goal_distance(-CENTRE_ALIGN_DISTANCE)
+        self.controller.set_goal_angle(CENTRE_ALIGN_ANGLE)
+
+        self.update_motors(speed)
+
 
     def update_motors(self, speed=1.0):
         """Run PID control loop on motors until the mouse is at the goal"""
@@ -412,6 +425,9 @@ class Micromouse():
     def map_tof_distance_error(self, error):
         """This will map a distance error (absolute value) of 5mm to 12mm
         to a turn angle of 3 to 7 degrees"""
+        #If error is larger than 14mm, return 10
+        if error > 14:
+            return 10
         #Constrain error
         error = max(5, min(12, error))
         turn_angle = 4/7 * error +1/7
@@ -464,10 +480,10 @@ class Micromouse():
     
     def move_one_cell(self):
         self.move(180, 1.0)
+        #utime.sleep_ms(200)
+        #self.wall_align_side()
         utime.sleep_ms(200)
-        self.wall_align_side()
-        utime.sleep_ms(200)
-        self.wall_align_front()
+        #self.wall_align_front()
         utime.sleep_ms(100)
 
     def move_cells(self, n=1, speed=1.0):
@@ -566,7 +582,7 @@ class Controller:
 
     def update(self, encoder_1, encoder_2, dt):
         dist_error = self._goal_counts - (encoder_1 + encoder_2) / 2
-        angle_error = self._goal_difference - (encoder_2 - encoder_1) + ANGLE_BIAS
+        angle_error = self._goal_difference - (encoder_2 - encoder_1)
 
         self._at_goal = (
             abs(dist_error) < DIST_THRESHOLD and abs(angle_error) < ANGLE_THRESHOLD
