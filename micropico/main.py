@@ -188,13 +188,15 @@ if __name__ == "__main__":
             search_maze(maze, mm)
             moves, optimal = maze.extract_moves(mm.start_pos, mm.start_heading)
             if optimal:
-                mm.led_green_set(1)
+                mm.led_green_set(1)  # green led if optimal path found
         elif mode == SPEEDRUN:
             # align
             mm.move_to_centre()
             utime.sleep_ms(100)
 
             execute_moves(mm, moves)
+
+        utime.sleep(1)  # so you can see the green led :)
 
     # mm.back_up()
     # time.sleep(1)

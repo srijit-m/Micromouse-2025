@@ -8,7 +8,7 @@ import math
 import utime
 from vl6180x import VL6180X
 
-START_POS = (4, 0)
+START_POS = (0, 0)
 START_HEADING = NORTH
 
 CELL_SIZE_MM = 180
@@ -498,12 +498,30 @@ class Micromouse():
 
     def turn_right_90(self, speed=1.0):
         """Turn right 90 degrees and update the internal heading states"""
+        left_wall = self.wall_left()
+
         self.turn(90, speed)
+
+        if left_wall:
+            utime.sleep_ms(50)
+            self.back_up()
+            utime.sleep_ms(50)
+            self.move_to_centre()
+
         self.heading = right(self.heading)
 
     def turn_left_90(self, speed=1.0):
         """Turn left 90 degrees and update the internal heading state"""
+        right_wall = self.wall_right()
+
         self.turn(-90, speed)
+
+        if right_wall:
+            utime.sleep_ms(50)
+            self.back_up()
+            utime.sleep_ms(50)
+            self.move_to_centre()
+
         self.heading = left(self.heading)
 
     def turn_around(self, speed=1.0):
